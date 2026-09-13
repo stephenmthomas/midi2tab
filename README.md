@@ -1,11 +1,11 @@
-# midi2tab
-Uses dynamic programming (Viterbi) and a slew of weights/options to convert MIDI data to guitar tab. Includes piano roll and audio playback as well.
 
 # MIDI2TAB
 
-A lightweight, browser-based MIDI-to-guitar/bass tablature and fretboard analysis tool.
+A lightweight, browser-based MIDI-to-guitar/bass tablature and fretboard analysis tool. Uses dynamic programming (Viterbi) and a slew of weights/options to convert MIDI data to guitar tab. Includes piano roll and audio playback as well.
 
 Drop in a MIDI file, choose a track and tuning, and MIDI2TAB maps the notes onto a playable fretboard — without uploading anything, installing anything, or pretending MIDI automatically knows how human hands work.
+
+And of course, its free and open source.
 
 ## Features
 
