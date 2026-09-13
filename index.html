@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MIDI2TAB</title>
+<style>
+  :root { color-scheme:dark; --bg:#101217; --panel:#191d25; --line:#343b49; --text:#e7ebf1; --muted:#9ca7b8; --accent:#78a9ff; --bad:#ff9292; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui,sans-serif; }
+  main { max-width:100vw; margin:0 auto; padding:20px; }
+  h1 { margin:0 0 4px; font-size:24px; }
+  .lede { margin:0 0 16px; color:var(--muted); max-width:900px; }
+  .grid { display:grid; grid-template-columns:minmax(330px,430px) 1fr; gap:16px; align-items:start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .stack { display:grid; gap:12px; }
+  label { display:grid; gap:5px; color:var(--muted); font-size:12px; font-weight:650; }
+  input, select, button, textarea { font:inherit; }
+  input[type=file], input[type=number], input[type=text], select { width:100%; min-height:36px; border:1px solid var(--line); border-radius:5px; background:#101319; color:var(--text); padding:7px 9px; }
+  input[type=file] { padding:5px; }
+  button { min-height:36px; border:1px solid var(--line); border-radius:5px; background:#252b36; color:var(--text); padding:7px 12px; cursor:pointer; }
+  button.primary { background:#275ba7; border-color:#3975cb; }
+  button:hover { filter:brightness(1.12); }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .buttons { display:flex; flex-wrap:wrap; gap:8px; }
+  .check { display:flex; gap:8px; align-items:center; color:var(--text); font-weight:500; }
+  .check input { width:auto; }
+  .tuning-head { display:flex; justify-content:space-between; align-items:end; gap:10px; }
+  .tuning-grid { display:grid; grid-template-columns:1fr 110px; gap:6px 8px; align-items:center; }
+  .string-label { color:var(--muted); font:12px ui-monospace,SFMono-Regular,Consolas,monospace; }
+  .status { min-height:21px; color:var(--muted); }
+  .status.error { color:var(--bad); }
+  .drop { border:1px dashed #596478; border-radius:6px; padding:10px; text-align:center; color:var(--muted); }
+  .drop.drag { border-color:var(--accent); color:var(--text); background:#18243a; }
+  textarea { width:100%; min-height:740px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#0b0d11; color:#dce5f1; padding:12px; font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; tab-size:4; white-space:pre; }
+  .help { color:var(--muted); font-size:12px; }
+  code { color:#cbd8ef; }
+  .subpanel { border-top:1px solid var(--line); padding-top:12px; }
+  .section { border:1px solid var(--line); border-radius:6px; background:rgba(255,255,255,.018); overflow:hidden; }
+  .section > summary { list-style:none; cursor:pointer; user-select:none; padding:10px 12px; font-weight:650; font-size:12px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,.018); }
+  .section > summary::-webkit-details-marker { display:none; }
+  .section > summary::after { content:"▾"; color:var(--muted); }
+  .section:not([open]) > summary::after { content:"▸"; }
+  .section-body { padding:12px; border-top:1px solid var(--line); display:grid; gap:12px; }
+  .note-matrix { display:grid; grid-template-columns:28px repeat(12,1fr); align-items:center; gap:0; }
+  .nm-hdr { text-align:center; color:var(--muted); font:10px/1 ui-monospace,SFMono-Regular,Consolas,monospace; font-weight:650; padding:2px 0; }
+  .nm-oct { color:var(--muted); font:10px/1 ui-monospace,SFMono-Regular,Consolas,monospace; font-weight:650; text-align:right; padding-right:4px; }
+  .nm-cell { display:flex; justify-content:center; padding:2px 0; }
+  .nm-cell input[type=checkbox] { width:auto; min-height:auto; margin:0; cursor:pointer; }
+  .nm-cell input[type=checkbox]:disabled { cursor:default; opacity:.25; }
+  .pr-wrap { border-top:1px solid var(--line); padding-top:12px; display:grid; gap:8px; }
+  .pr-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .pr-toolbar button { min-height:30px; padding:4px 10px; font-size:12px; }
+  .pr-toolbar label { display:flex; flex-direction:row; align-items:center; gap:6px; font-size:11px; }
+  .pr-toolbar input[type=range] { width:100px; min-height:auto; padding:0; border:none; background:none; }
+  #prCanvas { width:100%; height:380px; display:block; border:1px solid var(--line); border-radius:6px; background:#0b0d11; cursor:crosshair; touch-action:none; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; } textarea { min-height:560px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>MIDI2TAB</h1>
+  <p class="lede">MIDI to Tab Tool + Robust Feature Set</p>
+
+  <div class="grid">
+    <section class="panel stack">
+
+      <details class="section" open>
+        <summary>MIDI File</summary>
+        <div class="section-body">
+          <label>MIDI file
+            <input id="fileInput" type="file" accept=".mid,.midi,audio/midi,audio/x-midi">
+          </label>
+          <div id="dropZone" class="drop">Drop a .mid or .midi file here</div>
+          <div id="fileStatus" class="status">No MIDI loaded.</div>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>Track &amp; Output</summary>
+        <div class="section-body">
+          <div class="row">
+            <label>MIDI Track
+              <select id="trackSelect"><option value="all">All note tracks</option></select>
+            </label>
+            <label>Output Style
+              <select id="outputMode">
+                <option value="allPositions">All playable positions — TAB</option>
+                <option value="positionPasses">Separate fret-position passes — TAB</option>
+                <option value="lowest">One low-fret candidate — TAB</option>
+                <option value="unique">Unique-note fretboard index</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label>Read From [Event #]
+              <input id="eventStart" type="number" min="0" max="0" value="0">
+            </label>
+            <label>Read To [Event #]
+              <input id="eventEnd" type="number" min="0" max="0" value="0">
+            </label>
+          </div>
+          <div class="help">Horizontal Trim — narrow the range of note events that get tabbed. Defaults reset when a file or track is loaded.</div>
+          <div class="row">
+            <label>Lowest Note <span id="noteLowLabel" style="font-weight:400"></span>
+              <input id="noteLow" type="number" min="0" max="127" value="0">
+            </label>
+            <label>Highest Note <span id="noteHighLabel" style="font-weight:400"></span>
+              <input id="noteHigh" type="number" min="0" max="127" value="127">
+            </label>
+          </div>
+          <div class="help">Vertical Trim — exclude notes outside this MIDI pitch range. Raise the low or lower the high to ignore octaves.</div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Note Matrix</summary>
+        <div class="section-body">
+          <div class="help">Toggle individual notes on/off. Disabled checkboxes are pitches not present in the loaded track.</div>
+          <div id="noteMatrix" class="help" style="color:var(--muted)">Load a MIDI file to populate.</div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Tuning</summary>
+        <div class="section-body">
+          <div class="tuning-head">
+            <label style="flex:1">Preset
+              <select id="preset">
+                <option value="guitar6">6-string guitar — E A D G B E</option>
+                <option value="dropd">6-string guitar — Drop D</option>
+                <option value="guitar7">7-string guitar — B E A D G B E</option>
+                <option value="dadgad">6-string guitar — DADGAD</option>
+                <option value="bass4">4-string bass — E A D G</option>
+                <option value="dropdbass">4-string bass — Drop D</option>
+                <option value="bass5">5-string bass — B E A D G</option>
+                <option value="bass6">6-string bass — B E A D G C</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label style="width:110px">Strings
+              <input id="stringCount" type="number" min="1" max="12" value="6">
+            </label>
+          </div>
+          <div>
+            <div class="help" style="margin-bottom:6px">Enter Tuning <b>lowest string to highest</b>: <code>E2</code>, <code>Bb1</code>, <code>F#3</code>, or MIDI note number.</div>
+            <div id="tuningGrid" class="tuning-grid"></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Fret Range</summary>
+        <div class="section-body">
+          <div class="row">
+            <label>Transpose (semitones)
+              <input id="transpose" type="number" min="-36" max="36" step="1" value="0">
+            </label>
+            <div class="help" style="align-self:end">Shifts every interpreted MIDI pitch before fretting it. +12 lifts a bass line one octave. The MIDI file itself is never modified.</div>
+          </div>
+          <div class="row">
+            <label>Prefer single string (sequential tab)
+              <select id="preferString"><option value="">Any string</option></select>
+            </label>
+            <div class="help" style="align-self:end">Keeps the sequential tab on one string where it can. Notes that don’t reach move to another string rather than dropping out.</div>
+          </div>
+          <div class="row">
+            <label>Minimum fret
+              <input id="minFret" type="number" min="0" max="48" value="0">
+            </label>
+            <label>Maximum fret
+              <input id="maxFret" type="number" min="0" max="48" value="24">
+            </label>
+          </div>
+          <div class="row">
+            <label>Target fret (position bias)
+              <input id="targetFret" type="number" min="0" max="48" value="0">
+            </label>
+            <div class="help" style="align-self:end">Pulls fret choices toward this fret, clamped to the min/max range above. Leave at 0 for the original low-fret behavior.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Tab Layout</summary>
+        <div class="section-body">
+          <div class="row">
+            <label>Events per Staff
+              <input id="eventsPerStaff" type="number" min="4" max="40" value="16">
+            </label>
+            <label>Maximum event groups
+              <input id="maxEvents" type="number" min="1" max="100000" value="2000">
+            </label>
+          </div>
+          <div id="positionControls" class="subpanel stack">
+            <div class="row">
+              <label>Fret-position starts
+                <input id="positionStarts" type="text" value="0, 5, 9, 12, 17">
+              </label>
+              <label>Position width (frets)
+                <input id="positionWidth" type="number" min="1" max="12" value="5">
+              </label>
+            </div>
+            <div class="help">Used by “Separate fret-position passes.” Example: start 5 with width 5 uses frets 5–9.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>Options</summary>
+        <div class="section-body">
+          <div class="row">
+            <label>Chord grouping tolerance (ticks)
+              <input id="groupTolerance" type="number" min="0" max="960" value="0">
+            </label>
+            <label>Note spelling
+              <select id="spelling"><option value="sharp">Sharps</option><option value="flat">Flats</option></select>
+            </label>
+          </div>
+          <label class="check"><input id="collapseRepeats" type="checkbox"> Collapse consecutive identical note groups</label>
+          <label class="check"><input id="includeUnplayable" type="checkbox" checked> Mark notes outside the selected fretboard</label>
+          <label class="check"><input id="openInAllBands" type="checkbox" checked> Include open strings in all fret positions</label>
+          <label class="check"><input id="includePercussion" type="checkbox"> Include MIDI channel 10 percussion notes</label>
+        </div>
+      </details>
+
+      <div class="buttons">
+        <button id="generate" class="primary">Generate TAB</button>
+        <button id="copy">Copy text</button>
+        <button id="download">Save .txt</button>
+      </div>
+      <div class="help">Attack order is preserved, but note durations and rhythmic spacing are intentionally not transcribed. Everything runs locally in the browser.</div>
+    </section>
+
+    <section class="panel stack">
+      <div id="outputStatus" class="status">Tab Output - Load a MIDI file to begin.</div>
+      <textarea id="output" spellcheck="false" wrap="off" aria-label="Generated guitar tablature"></textarea>
+
+      <div class="pr-wrap">
+        <div class="pr-toolbar">
+          <button id="prPlay">&#9654; Play</button>
+          <button id="prStop">&#9632; Stop</button>
+          <label>Zoom <input id="prZoom" type="range" min="4" max="240" value="40"></label>
+          <label>Rows <input id="prRows" type="range" min="4" max="26" value="10"></label>
+          <button id="prFit">Fit</button>
+          <button id="prSelClear">Clear selection</button>
+          <label>Wave <select id="prWave" style="min-height:26px;padding:2px 4px;font-size:11px;width:auto;"><option>triangle</option><option>sine</option><option>square</option><option>sawtooth</option></select></label>
+          <label>Vol <input id="prVol" type="range" min="0" max="100" value="40"></label>
+          <span id="prStatus" class="help"></span>
+        </div>
+        <canvas id="prCanvas"></canvas>
+        <div class="help">Drag across the roll to select a time range &mdash; the TAB then generates from that range only. Click to move the playhead. Wheel scrolls vertically, Shift+wheel horizontally, Ctrl+wheel zooms. Dimmed notes are excluded by the current filters.</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+const PRESETS = {
+  guitar6:['E2','A2','D3','G3','B3','E4'], dropd:['D2','A2','D3','G3','B3','E4'], guitar7:['B1','E2','A2','D3','G3','B3','E4'],
+  dadgad:['D2','A2','D3','G3','A3','D4'], bass4:['E1','A1','D2','G2'], dropdbass:['D1','A1','D2','G2'],
+  bass5:['B0','E1','A1','D2','G2'], bass6:['B0','E1','A1','D2','G2','C3']
+};
+const NAMES_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NAMES_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const $=id=>document.getElementById(id);
+let midiData=null, currentFileName='';
+const excludedNotes=new Set();
+let baseNoteLow=0, baseNoteHigh=127;
+let prSelStart=null, prSelEnd=null;
+
+function clamp(n,lo,hi){return Math.max(lo,Math.min(hi,n));}
+function syncField(id,value){const el=$(id);if(document.activeElement!==el)el.value=value;}
+function readTranspose(){const t=clamp(Math.round(Number($('transpose').value)||0),-36,36);syncField('transpose',t);return t;}
+let regenerateTimer=null;
+function regenerateNow(){if(midiData)generate();}
+function scheduleRegenerate(){clearTimeout(regenerateTimer);regenerateTimer=setTimeout(regenerateNow,400);}
+function readU16(a,p){return(a[p]<<8)|a[p+1];}
+function readU32(a,p){return((a[p]*0x1000000)+(a[p+1]<<16)+(a[p+2]<<8)+a[p+3])>>>0;}
+function readVLQ(a,s){let v=0,c=0;while(s.p<a.length&&c++<4){const b=a[s.p++];v=(v<<7)|(b&0x7f);if(!(b&0x80))return v;}throw new Error('Invalid variable-length MIDI value.');}
+function ascii(bytes){return String.fromCharCode(...bytes).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'').trim();}
+
+function parseMidi(buffer){
+  const a=new Uint8Array(buffer);
+  if(a.length<14||ascii(a.slice(0,4))!=='MThd')throw new Error('Not a Standard MIDI File.');
+  const headerLength=readU32(a,4),format=readU16(a,8),trackCount=readU16(a,10),division=readU16(a,12);
+  if(division&0x8000)throw new Error('SMPTE-time MIDI is not supported; use PPQ MIDI.');
+  let p=8+headerLength;const tracks=[],tempos=[],timeSignatures=[];
+  for(let trackIndex=0;trackIndex<trackCount;trackIndex++){
+    if(p+8>a.length||ascii(a.slice(p,p+4))!=='MTrk')throw new Error(`Missing MTrk chunk at track ${trackIndex+1}.`);
+    const length=readU32(a,p+4),end=p+8+length;if(end>a.length)throw new Error(`Track ${trackIndex+1} is truncated.`);
+    const s={p:p+8},notes=[],programs=new Map(),pending=new Map();let tick=0,running=null,name=`Track ${trackIndex+1}`;
+    while(s.p<end){
+      tick+=readVLQ(a,s);if(s.p>=end)break;let status=a[s.p];
+      if(status<0x80){if(running==null)throw new Error(`Invalid running status in track ${trackIndex+1}.`);status=running;}
+      else{s.p++;if(status<0xf0)running=status;}
+      if(status===0xff){
+        if(s.p>=end)break;const type=a[s.p++],len=readVLQ(a,s),stop=Math.min(end,s.p+len),payload=a.slice(s.p,stop);s.p=stop;
+        if(type===0x03&&payload.length)name=ascii(payload)||name;
+        else if(type===0x51&&payload.length>=3)tempos.push({tick,mpqn:(payload[0]<<16)|(payload[1]<<8)|payload[2]});
+        else if(type===0x58&&payload.length>=2)timeSignatures.push({tick,numerator:payload[0],denominator:2**payload[1]});
+        continue;
+      }
+      if(status===0xf0||status===0xf7){const len=readVLQ(a,s);s.p=Math.min(end,s.p+len);running=null;continue;}
+      if(status>=0xf0){const lengths={0xf1:1,0xf2:2,0xf3:1,0xf6:0,0xf8:0,0xfa:0,0xfb:0,0xfc:0,0xfe:0};s.p=Math.min(end,s.p+(lengths[status]??0));running=null;continue;}
+      const type=status&0xf0,channel=status&0x0f,one=type===0xc0||type===0xd0;if(s.p>=end)break;
+      const d1=a[s.p++],d2=one?0:(s.p<end?a[s.p++]:0);
+      if(type===0xc0)programs.set(channel,d1);
+      if(type===0x90&&d2>0){
+        const n={tick,note:d1,velocity:d2,channel,trackIndex,duration:0};notes.push(n);
+        const key=channel*128+d1;if(!pending.has(key))pending.set(key,[]);pending.get(key).push(n);
+      }else if(type===0x80||(type===0x90&&d2===0)){
+        const key=channel*128+d1,queue=pending.get(key);
+        if(queue&&queue.length){const n=queue.shift();n.duration=Math.max(1,tick-n.tick);}
+      }
+    }
+    for(const queue of pending.values())for(const n of queue)if(!n.duration)n.duration=Math.max(1,tick-n.tick);
+    tracks.push({index:trackIndex,name,notes,programs:[...programs.entries()]});p=end;
+  }
+  tempos.sort((a,b)=>a.tick-b.tick);timeSignatures.sort((a,b)=>a.tick-b.tick);
+  return{format,ppq:division,tracks,tempos,timeSignatures};
+}
+
+function parseNote(value){
+  const raw=String(value).trim();if(/^\d+$/.test(raw)){const n=Number(raw);return n>=0&&n<=127?n:null;}
+  const m=raw.match(/^([A-Ga-g])([#b]?)(-?\d+)$/);if(!m)return null;
+  const base={C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1].toUpperCase()],acc=m[2]==='#'?1:m[2]==='b'?-1:0;
+  const n=(Number(m[3])+1)*12+base+acc;return n>=0&&n<=127?n:null;
+}
+function noteName(n){const names=$('spelling').value==='flat'?NAMES_FLAT:NAMES_SHARP;return`${names[((n%12)+12)%12]}${Math.floor(n/12)-1}`;}
+function setTuning(notes){$('stringCount').value=notes.length;renderTuning(notes);}
+function renderTuning(values=null){
+  const count=clamp(Number($('stringCount').value)||1,1,12);$('stringCount').value=count;
+  const old=values||[...document.querySelectorAll('.tuning-note')].map(x=>x.value),next=old.slice(0,count);
+  while(next.length<count){const last=parseNote(next[next.length-1]??'E2');next.push(noteName(clamp((last??40)+5,0,127)));}
+  const grid=$('tuningGrid');grid.innerHTML='';next.forEach((note,lowIndex)=>{
+    const label=document.createElement('div'),input=document.createElement('input');
+    label.className='string-label';label.textContent=`String ${count-lowIndex}${lowIndex===0?' (lowest)':lowIndex===count-1?' (highest)':''}`;
+    input.type='text';input.value=note;input.className='tuning-note';input.dataset.lowIndex=lowIndex;input.addEventListener('input',()=>{$('preset').value='custom';refreshPreferString();scheduleRegenerate();});
+    grid.append(label,input);
+  });
+  renderPreferString(next,count);
+}
+function renderPreferString(notes,count){
+  const select=$('preferString'),previous=select.value;
+  select.innerHTML='<option value="">Any string</option>';
+  notes.forEach((note,lowIndex)=>{
+    const option=document.createElement('option');option.value=lowIndex;
+    option.textContent=`String ${count-lowIndex} (${note})${lowIndex===0?' — lowest':lowIndex===count-1?' — highest':''}`;
+    select.append(option);
+  });
+  if([...select.options].some(o=>o.value===previous))select.value=previous;
+}
+function refreshPreferString(){const notes=[...document.querySelectorAll('.tuning-note')].map(x=>x.value);renderPreferString(notes,notes.length);}
+function preferredStringIndex(){const raw=$('preferString').value;return raw===''?null:Number(raw);}
+function readTuning(){
+  const tuning=[...document.querySelectorAll('.tuning-note')].map((x,i)=>({lowIndex:i,value:x.value,note:parseNote(x.value)}));
+  const bad=tuning.find(x=>x.note==null);if(bad)throw new Error(`Invalid tuning note: “${bad.value}”.`);return tuning;
+}
+function selectedEvents(applySelection=true){
+  if(!midiData)return[];const selected=$('trackSelect').value,drums=$('includePercussion').checked,transpose=readTranspose();
+  let events=midiData.tracks.flatMap(t=>selected==='all'||Number(selected)===t.index?t.notes:[]);
+  if(!drums)events=events.filter(e=>e.channel!==9);
+  if(excludedNotes.size)events=events.filter(e=>!excludedNotes.has(e.note));
+  if(transpose)events=events.map(e=>({...e,note:e.note+transpose}));
+  const nLow=Number($('noteLow').value)||0,nHigh=Number($('noteHigh').value)||127;
+  if(nLow>0||nHigh<127)events=events.filter(e=>e.note>=nLow&&e.note<=nHigh);
+  events.sort((a,b)=>a.tick-b.tick||a.trackIndex-b.trackIndex||a.note-b.note);
+  if(applySelection&&prSelStart!=null)events=events.filter(e=>e.tick>=prSelStart&&e.tick<prSelEnd);
+  const eStart=Math.max(0,Number($('eventStart').value)||0),eEnd=Number($('eventEnd').value);
+  if(eStart>0||eEnd<events.length)events=events.slice(eStart,Math.max(eStart,eEnd));
+  return events;
+}
+function groupEvents(events){
+  const tolerance=Math.max(0,Number($('groupTolerance').value)||0),groups=[];
+  for(const e of events){const last=groups.at(-1);if(!last||e.tick-last.anchorTick>tolerance)groups.push({anchorTick:e.tick,events:[e]});else last.events.push(e);}
+  let normalized=groups.map(g=>({tick:g.anchorTick,notes:[...new Set(g.events.map(e=>e.note))].sort((a,b)=>a-b)}));
+  if($('collapseRepeats').checked)normalized=normalized.filter((g,i,a)=>i===0||g.notes.join(',')!==a[i-1].notes.join(','));
+  return normalized.slice(0,Math.max(1,Number($('maxEvents').value)||2000));
+}
+function positionsFor(note,tuning,minFret,maxFret){return tuning.map(s=>({...s,fret:note-s.note})).filter(x=>x.fret>=minFret&&x.fret<=maxFret);}
+function musicalPosition(tick){
+  const ts=[...midiData.timeSignatures].reverse().find(x=>x.tick<=tick)||{tick:0,numerator:4,denominator:4};
+  const beatTicks=midiData.ppq*4/ts.denominator,measureTicks=beatTicks*ts.numerator,local=Math.max(0,tick-ts.tick);
+  return{bar:Math.floor(local/measureTicks)+1,beat:Math.floor((local%measureTicks)/beatTicks)+1,sub:Math.round(local%beatTicks)};
+}
+function centerText(text,width,fill=' '){text=String(text);if(text.length>=width)return text.slice(0,width);const left=Math.floor((width-text.length)/2),right=width-text.length-left;return fill.repeat(left)+text+fill.repeat(right);}
+function fretCell(text,width){return centerText(text??'',width,'-');}
+function eventLabel(group){return group.notes.map(noteName).join('+');}
+function pitchClassName(n){const names=$('spelling').value==='flat'?NAMES_FLAT:NAMES_SHARP;return names[((n%12)+12)%12];}
+function allNotesMappingOutput(events,tuning,minFret,maxFret){
+  const pitchClasses=new Set(events.map(e=>((e.note%12)+12)%12)),highToLow=[...tuning].reverse();
+  const labelWidth=Math.max(...highToLow.map(s=>pitchClassName(s.note).length)),cellWidth=Math.max(4,String(maxFret).length+2),lines=['ALL NOTES MAPPING — combined MIDI pitch classes across the fretboard'];
+  highToLow.forEach(s=>{let line=pitchClassName(s.note).padStart(labelWidth,' ')+'-|';for(let fret=minFret;fret<=maxFret;fret++)line+=pitchClasses.has((s.note+fret)%12)?centerText(String(fret),cellWidth,'-'):'-'.repeat(cellWidth);lines.push(line+'|');});
+  lines.push('');return lines.join('\n');
+}
+function sequentialLowestFretOutput(events,tuning,minFret,maxFret,targetFret=0){
+  const groups=[];
+  for(const e of events){const last=groups.at(-1);if(!last||e.tick!==last.tick)groups.push({tick:e.tick,notes:[e.note]});else if(!last.notes.includes(e.note))last.notes.push(e.note);}
+  const assignments=arrangePlayableSequence(groups,tuning,minFret,maxFret,targetFret);
+  const body=chunkedStaffOutput(groups,tuning,(g,index)=>{
+    const assignment=assignments[index],map=new Map(assignment.chosen);
+    if($('includeUnplayable').checked&&assignment.assigned<g.notes.length){const unused=tuning.find(s=>!map.has(s.lowIndex));if(unused)map.set(unused.lowIndex,'x');}
+    return map;
+  },(a,b)=>`SEQUENTIAL PLAYABLE TAB — time positions ${a+1}-${b}
+Exact MIDI pitches in chronological order; simultaneous notes form compact vertical shapes.`);
+  return body;
+}
+function shapeCandidates(notes,tuning,minFret,maxFret,targetFret=0){
+  const ordered=[...new Set(notes)].sort((a,b)=>positionsFor(a,tuning,minFret,maxFret).length-positionsFor(b,tuning,minFret,maxFret).length||a-b),options=ordered.map(note=>positionsFor(note,tuning,minFret,maxFret)),raw=[];let maxAssigned=0;
+  function recurse(i,used,chosen){
+    if(i===ordered.length){const assigned=chosen.size;if(assigned<maxAssigned)return;if(assigned>maxAssigned){maxAssigned=assigned;raw.length=0;}raw.push(new Map(chosen));return;}
+    for(const p of options[i]){if(used.has(p.lowIndex))continue;used.add(p.lowIndex);chosen.set(p.lowIndex,p.fret);recurse(i+1,used,chosen);chosen.delete(p.lowIndex);used.delete(p.lowIndex);}
+    recurse(i+1,used,chosen);
+  }
+  recurse(0,new Set(),new Map());
+  const prefer=preferredStringIndex();
+  return raw.map(chosen=>{
+    const frets=[...chosen.values()].filter(Number.isFinite),fretted=frets.filter(f=>f>0),lo=fretted.length?Math.min(...fretted):0,hi=fretted.length?Math.max(...fretted):0,span=hi-lo,center=fretted.length?fretted.reduce((a,b)=>a+b,0)/fretted.length:0,assigned=chosen.size,missing=ordered.length-assigned;
+    const offString=prefer==null?0:[...chosen.keys()].filter(i=>i!==prefer).length;
+    return{chosen,assigned,missing,center,shapeCost:missing*100000+offString*1000+span*8+Math.abs(hi-targetFret)*2+frets.reduce((a,b)=>a+Math.abs(b-targetFret),0)*.2};
+  }).sort((a,b)=>a.shapeCost-b.shapeCost).slice(0,96);
+}
+function arrangePlayableSequence(groups,tuning,minFret,maxFret,targetFret=0){
+  if(!groups.length)return[];const candidates=groups.map(g=>shapeCandidates(g.notes,tuning,minFret,maxFret,targetFret)),costs=[],parents=[];
+  costs[0]=candidates[0].map(c=>c.shapeCost);parents[0]=candidates[0].map(()=>-1);
+  for(let i=1;i<candidates.length;i++){
+    costs[i]=[];parents[i]=[];
+    for(let j=0;j<candidates[i].length;j++){
+      let best=Infinity,bestParent=0;for(let k=0;k<candidates[i-1].length;k++){const movement=Math.abs(candidates[i][j].center-candidates[i-1][k].center)*4,value=costs[i-1][k]+movement+candidates[i][j].shapeCost;if(value<best){best=value;bestParent=k;}}
+      costs[i][j]=best;parents[i][j]=bestParent;
+    }
+  }
+  const result=new Array(groups.length);let index=costs.at(-1).reduce((best,value,i,a)=>value<a[best]?i:best,0);
+  for(let i=groups.length-1;i>=0;i--){result[i]=candidates[i][index];index=parents[i][index];}return result;
+}
+function header(tuning,minFret,maxFret,eventCount,sourceCount,targetFret=0,transpose=0){
+  const track=$('trackSelect').selectedOptions[0]?.textContent||'All note tracks';
+  return[
+    '# MIDI FRETBOARD TAB',`# File: ${currentFileName}`,`# Track: ${track}${transpose?` (transposed ${transpose>0?'+':''}${transpose} semitones)`:''}`,
+    `# Tuning low -> high: ${tuning.map(x=>noteName(x.note)).join('  ')}`,`# Fret range: ${minFret}-${maxFret}${targetFret?` (target fret ${targetFret})`:''}`,
+    `# ${sourceCount} note attacks -> ${eventCount} grouped events. Attack order only; durations are not transcribed.`,''].join('\n');
+}
+function renderStaff(groups,tuning,getCells,title,startNumber=1){
+  if(!groups.length)return`${title}\n(no events)\n`;
+  const highToLow=[...tuning].reverse(),labelWidth=Math.max(...highToLow.map(s=>noteName(s.note).length))+1;
+  const cellsByEvent=groups.map((g,index)=>{
+    const map=getCells(g,index),label=eventLabel(g),contents=highToLow.map(s=>map.get(s.lowIndex)??'');
+    const width=Math.max(6,label.length+2,...contents.map(x=>String(x).length+2));
+    return{g,label,contents,width};
+  });
+  const lines=[title];
+  highToLow.forEach((s,row)=>{
+    let line=noteName(s.note).padStart(labelWidth,' ')+'|';
+    cellsByEvent.forEach(e=>{line+=fretCell(e.contents[row],e.width);});
+    lines.push(line+'|');
+  });
+  let noteLine=' '.repeat(labelWidth)+' ';
+  cellsByEvent.forEach(e=>{noteLine+=centerText(e.label,e.width);});
+  lines.push(noteLine);
+  let posLine=' '.repeat(labelWidth)+' ';
+  cellsByEvent.forEach(e=>{const p=musicalPosition(e.g.tick);posLine+=centerText(`${p.bar}:${p.beat}`,e.width);});
+  lines.push(posLine,'');return lines.join('\n');
+}
+function chunkedStaffOutput(groups,tuning,getCells,titleForChunk){
+  const n=clamp(Number($('eventsPerStaff').value)||16,4,40),chunks=[];
+  for(let i=0;i<groups.length;i+=n){const chunk=groups.slice(i,i+n);chunks.push(renderStaff(chunk,tuning,(g,j)=>getCells(g,i+j),titleForChunk(i,Math.min(i+n,groups.length))));}
+  return chunks.join('\n');
+}
+function allPositionsOutput(groups,tuning,minFret,maxFret){
+  const includeBad=$('includeUnplayable').checked;
+  const body=chunkedStaffOutput(groups,tuning,g=>{
+    const map=new Map();for(const s of tuning){const frets=g.notes.map(n=>n-s.note).filter(f=>f>=minFret&&f<=maxFret);if(frets.length)map.set(s.lowIndex,frets.join('/'));}
+    if(includeBad&&![...map.values()].length)map.set(tuning[0].lowIndex,'x');return map;
+  },(a,b)=>`ALL PLAYABLE POSITIONS — events ${a+1}-${b}\nVertical repeats are alternate locations for the same MIDI pitch, not a chord.`);
+  return body;
+}
+function bestAssignment(notes,tuning,minFret,maxFret,bandStart=null,bandEnd=null,targetFret=null){
+  const openInBands=bandStart!=null&&$('openInAllBands').checked;
+  const ordered=[...notes].sort((a,b)=>b-a),options=ordered.map(note=>positionsFor(note,tuning,minFret,maxFret).filter(p=>bandStart==null||(p.fret>=bandStart&&p.fret<=bandEnd)||(openInBands&&p.fret===0)));
+  let best=null;
+  function recurse(i,used,chosen,assigned,score){
+    if(i===ordered.length){const candidate={chosen:new Map(chosen),assigned,score};if(!best||assigned>best.assigned||(assigned===best.assigned&&score<best.score))best=candidate;return;}
+    recurse(i+1,used,chosen,assigned,score+1000);
+    for(const p of options[i]){if(used.has(p.lowIndex))continue;used.add(p.lowIndex);chosen.set(p.lowIndex,p.fret);
+      const target=bandStart==null?(targetFret==null?minFret:targetFret):(bandStart+bandEnd)/2;recurse(i+1,used,chosen,assigned+1,score+Math.abs(p.fret-target));
+      chosen.delete(p.lowIndex);used.delete(p.lowIndex);
+    }
+  }
+  recurse(0,new Set(),new Map(),0,0);return best??{chosen:new Map(),assigned:0,score:0};
+}
+function lowestOutput(groups,tuning,minFret,maxFret,targetFret=null){
+  return chunkedStaffOutput(groups,tuning,g=>{const a=bestAssignment(g.notes,tuning,minFret,maxFret,null,null,targetFret);if($('includeUnplayable').checked&&a.assigned<g.notes.length&&a.chosen.size===0)a.chosen.set(tuning[0].lowIndex,'x');return a.chosen;},
+    (a,b)=>`${targetFret?`FRET-${targetFret} CANDIDATE`:'LOW-FRET CANDIDATE'} — events ${a+1}-${b}\nOne possible location per pitch; not optimized for performance.`);
+}
+function parseStarts(){const starts=$('positionStarts').value.split(',').map(x=>Number(x.trim())).filter(Number.isFinite).map(x=>Math.max(0,Math.round(x)));return[...new Set(starts)].sort((a,b)=>a-b);}
+function positionPassesOutput(groups,tuning,minFret,maxFret){
+  const starts=parseStarts();if(!starts.length)throw new Error('Enter at least one fret-position start, such as 0, 5, 9, 12.');
+  const width=clamp(Number($('positionWidth').value)||5,1,12),sections=[],openNote=$('openInAllBands').checked?', plus open strings':'';
+  for(const start of starts){const end=Math.min(maxFret,start+width-1);if(end<minFret||start>maxFret)continue;
+    const actualStart=Math.max(start,minFret);
+    sections.push(chunkedStaffOutput(groups,tuning,g=>{const a=bestAssignment(g.notes,tuning,minFret,maxFret,actualStart,end);if($('includeUnplayable').checked&&a.assigned<g.notes.length&&a.chosen.size===0)a.chosen.set(tuning[0].lowIndex,'x');return a.chosen;},
+      (a,b)=>`${actualStart===0?'OPEN / LOW':`${actualStart}th-FRET`} POSITION (${actualStart}-${end}) — events ${a+1}-${b}\nOnly locations inside this fret band${actualStart===0?'':openNote} are shown; x means none fit.`));
+  }
+  return sections.join('\n');
+}
+function uniqueOutput(groups,tuning,minFret,maxFret){
+  const notes=[...new Set(groups.flatMap(g=>g.notes))].sort((a,b)=>a-b),lines=['UNIQUE-NOTE FRETBOARD INDEX'];
+  for(const n of notes){const pos=positionsFor(n,tuning,minFret,maxFret);if(!pos.length&&!$('includeUnplayable').checked)continue;
+    lines.push(`${noteName(n).padEnd(5)} ${pos.length?pos.slice().reverse().map(p=>`${noteName(p.note)}:${p.fret}`).join('   '):'OUT OF RANGE'}`);
+  }return lines.join('\n')+'\n';
+}
+function buildNoteMatrix(){
+  const container=$('noteMatrix');container.innerHTML='';excludedNotes.clear();
+  if(!midiData){container.className='help';container.textContent='Load a MIDI file to populate.';return;}
+  const selected=$('trackSelect').value,drums=$('includePercussion').checked;
+  let events=midiData.tracks.flatMap(t=>selected==='all'||Number(selected)===t.index?t.notes:[]);
+  if(!drums)events=events.filter(e=>e.channel!==9);
+  const presentNotes=new Set(events.map(e=>e.note));
+  if(!presentNotes.size){container.className='help';container.textContent='No notes in selected track.';return;}
+  const minOct=Math.floor(Math.min(...presentNotes)/12)-1,maxOct=Math.floor(Math.max(...presentNotes)/12)-1;
+  const names=$('spelling').value==='flat'?NAMES_FLAT:NAMES_SHARP;
+  container.className='note-matrix';
+  const corner=document.createElement('div');container.appendChild(corner);
+  for(let i=0;i<12;i++){const h=document.createElement('div');h.className='nm-hdr';h.textContent=names[i];container.appendChild(h);}
+  for(let oct=minOct;oct<=maxOct;oct++){
+    const lbl=document.createElement('div');lbl.className='nm-oct';lbl.textContent=oct;container.appendChild(lbl);
+    for(let pc=0;pc<12;pc++){
+      const mn=(oct+1)*12+pc,cell=document.createElement('div');cell.className='nm-cell';
+      const cb=document.createElement('input');cb.type='checkbox';
+      const present=presentNotes.has(mn);cb.checked=present;cb.disabled=!present;
+      if(present)cb.addEventListener('change',()=>{if(cb.checked)excludedNotes.delete(mn);else excludedNotes.add(mn);regenerateNow();});
+      cell.appendChild(cb);container.appendChild(cell);
+    }
+  }
+}
+function updateFilterRanges(){
+  if(!midiData)return;
+  buildNoteMatrix();
+  const selected=$('trackSelect').value,drums=$('includePercussion').checked;
+  let events=midiData.tracks.flatMap(t=>selected==='all'||Number(selected)===t.index?t.notes:[]);
+  if(!drums)events=events.filter(e=>e.channel!==9);
+  events.sort((a,b)=>a.tick-b.tick||a.trackIndex-b.trackIndex||a.note-b.note);
+  const count=events.length;
+  $('eventStart').max=Math.max(0,count-1);$('eventStart').value=0;
+  $('eventEnd').max=count;$('eventEnd').value=count;
+  if(count){
+    const notes=events.map(e=>e.note);
+    baseNoteLow=Math.min(...notes);baseNoteHigh=Math.max(...notes);
+  }else{baseNoteLow=0;baseNoteHigh=127;}
+  syncNoteRange();
+}
+function syncNoteRange(){
+  const t=readTranspose(),lo=baseNoteLow+t,hi=baseNoteHigh+t;
+  $('noteLow').value=lo;$('noteHigh').value=hi;
+  $('noteLowLabel').textContent=lo>=0&&lo<=127?`(${noteName(lo)})`:'';
+  $('noteHighLabel').textContent=hi>=0&&hi<=127?`(${noteName(hi)})`:'';
+}
+function generate(){
+  try{
+    if(!midiData)throw new Error('Load a MIDI file first.');const tuning=readTuning();
+    const minFret=Math.max(0,Number($('minFret').value)||0),maxFret=Math.max(minFret,Number($('maxFret').value)||24);syncField('minFret',minFret);syncField('maxFret',maxFret);
+    const targetFret=clamp(Math.round(Number($('targetFret').value)||0),minFret,maxFret);syncField('targetFret',targetFret);
+    const events=selectedEvents(),groups=groupEvents(events),mode=$('outputMode').value;
+    let body='';if(mode==='allPositions')body=allPositionsOutput(groups,tuning,minFret,maxFret);else if(mode==='positionPasses')body=positionPassesOutput(groups,tuning,minFret,maxFret);else if(mode==='lowest')body=lowestOutput(groups,tuning,minFret,maxFret,targetFret);else body=uniqueOutput(groups,tuning,minFret,maxFret);
+    $('output').value=header(tuning,minFret,maxFret,groups.length,events.length,targetFret,readTranspose())+allNotesMappingOutput(events,tuning,minFret,maxFret)+'\n'+sequentialLowestFretOutput(events,tuning,minFret,maxFret,targetFret)+'\n'+body;
+    $('outputStatus').textContent=`${events.length} note attacks -> ${groups.length} TAB columns. ${$('output').value.length.toLocaleString()} characters.`;$('outputStatus').className='status';
+    prRefresh();
+  }catch(err){$('outputStatus').textContent=err.message;$('outputStatus').className='status error';}
+}
+async function loadFile(file){
+  if(!file)return;try{
+    $('fileStatus').textContent=`Reading ${file.name}...`;$('fileStatus').className='status';midiData=parseMidi(await file.arrayBuffer());currentFileName=file.name;
+    const select=$('trackSelect');select.innerHTML='<option value="all">All note tracks</option>';midiData.tracks.forEach(t=>{const o=document.createElement('option');o.value=t.index;o.textContent=`${t.index+1}: ${t.name} (${t.notes.length} notes)`;select.append(o);});
+    const noteTracks=midiData.tracks.filter(t=>t.notes.length);if(noteTracks.length===1)select.value=String(noteTracks[0].index);
+    const programs=noteTracks.flatMap(t=>t.programs.map(([,p])=>p)),allNotes=noteTracks.flatMap(t=>t.notes.map(n=>n.note));
+    if(programs.some(p=>p>=32&&p<=39)&&allNotes.length){const preset=Math.min(...allNotes)<28?'bass5':'bass4';$('preset').value=preset;setTuning(PRESETS[preset]);}
+    else if(allNotes.length&&$('preset').value==='guitar6'&&Math.min(...allNotes)===38&&noteTracks.some(t=>/guitar/i.test(t.name))){$('preset').value='dropd';setTuning(PRESETS.dropd);}
+    const total=midiData.tracks.reduce((n,t)=>n+t.notes.length,0);$('fileStatus').textContent=`${file.name}: format ${midiData.format}, ${midiData.ppq} PPQ, ${midiData.tracks.length} tracks, ${total} note attacks.`;
+    prStop();prSelStart=prSelEnd=null;prPlayhead=0;buildTempoMap();updateFilterRanges();generate();prBuildNotes();prFitZoom();prDraw();prStatusText();
+  }catch(err){midiData=null;$('fileStatus').textContent=err.message;$('fileStatus').className='status error';}
+}
+
+
+/* ---------- piano roll ---------- */
+const PR_GUTTER=46, PR_RULER=20;
+const prCanvas=$('prCanvas'), prCtx=prCanvas.getContext('2d');
+let tempoMap=[], prNotes=[], prLowNote=48, prHighNote=72, prTotalTicks=0;
+let prPxPerQuarter=40, prRowH=10, prScrollX=0, prScrollY=0, prPlayhead=0;
+let prDragging=false, prDragAnchor=0, prDragMoved=false;
+let audioCtx=null, prPlaying=false, prQueue=[], prQueueIdx=0, prStartAudioTime=0, prStartTick=0, prTimer=null;
+
+function buildTempoMap(){
+  tempoMap=[];if(!midiData)return;
+  const raw=midiData.tempos.filter(t=>t.tick>0);
+  const first=midiData.tempos.find(t=>t.tick===0);
+  const list=[{tick:0,mpqn:first?first.mpqn:500000},...raw];
+  let sec=0;
+  for(let i=0;i<list.length;i++){
+    tempoMap.push({tick:list[i].tick,mpqn:list[i].mpqn,seconds:sec});
+    if(i+1<list.length)sec+=(list[i+1].tick-list[i].tick)*(list[i].mpqn/1e6)/midiData.ppq;
+  }
+}
+function tickToSeconds(tick){
+  if(!tempoMap.length)return 0;let e=tempoMap[0];
+  for(const x of tempoMap){if(x.tick<=tick)e=x;else break;}
+  return e.seconds+(tick-e.tick)*(e.mpqn/1e6)/midiData.ppq;
+}
+function secondsToTick(sec){
+  if(!tempoMap.length)return 0;let e=tempoMap[0];
+  for(const x of tempoMap){if(x.seconds<=sec)e=x;else break;}
+  return e.tick+(sec-e.seconds)*1e6/e.mpqn*midiData.ppq;
+}
+function prMeasureTicks(){
+  const ts=midiData.timeSignatures[0]||{numerator:4,denominator:4};
+  return midiData.ppq*4/ts.denominator*ts.numerator;
+}
+function prBuildNotes(){
+  prNotes=[];if(!midiData){prTotalTicks=0;return;}
+  const selected=$('trackSelect').value,drums=$('includePercussion').checked,transpose=readTranspose();
+  let raw=midiData.tracks.flatMap(t=>selected==='all'||Number(selected)===t.index?t.notes:[]);
+  if(!drums)raw=raw.filter(e=>e.channel!==9);
+  const live=new Set(selectedEvents(false).map(e=>`${e.tick}:${e.note}`));
+  prNotes=raw.map(e=>{
+    const note=e.note+transpose;
+    return{tick:e.tick,dur:e.duration||Math.round(midiData.ppq/4),note,included:live.has(`${e.tick}:${note}`)};
+  });
+  prTotalTicks=prNotes.length?Math.max(...prNotes.map(n=>n.tick+n.dur)):0;
+  if(prNotes.length){
+    const ns=prNotes.map(n=>n.note);
+    prLowNote=Math.max(0,Math.min(...ns)-2);prHighNote=Math.min(127,Math.max(...ns)+2);
+    if(prHighNote-prLowNote<11){const mid=(prHighNote+prLowNote)>>1;prLowNote=Math.max(0,mid-6);prHighNote=Math.min(127,mid+6);}
+  }
+}
+function prPxPerTick(){return midiData?prPxPerQuarter/midiData.ppq:0;}
+function prViewW(){return prCanvas.clientWidth-PR_GUTTER;}
+function prViewH(){return prCanvas.clientHeight-PR_RULER;}
+function prContentH(){return (prHighNote-prLowNote+1)*prRowH;}
+function prClampScroll(){
+  const maxX=Math.max(0,prTotalTicks*prPxPerTick()-prViewW());prScrollX=clamp(prScrollX,0,maxX);
+  const maxY=Math.max(0,prContentH()-prViewH());prScrollY=clamp(prScrollY,0,maxY);
+}
+function prXForTick(tick){return PR_GUTTER+tick*prPxPerTick()-prScrollX;}
+function prTickForX(x){return prPxPerTick()>0?(x-PR_GUTTER+prScrollX)/prPxPerTick():0;}
+function prYForNote(note){return PR_RULER+(prHighNote-note)*prRowH-prScrollY;}
+function prFitZoom(){
+  if(!midiData||!prTotalTicks)return;
+  prPxPerQuarter=clamp(prViewW()/(prTotalTicks/midiData.ppq),4,240);
+  $('prZoom').value=Math.round(prPxPerQuarter);
+  prRowH=clamp(Math.floor(prViewH()/(prHighNote-prLowNote+1)),4,26);
+  $('prRows').value=prRowH;
+  prScrollX=0;prScrollY=0;prClampScroll();
+}
+function prDraw(){
+  const dpr=window.devicePixelRatio||1,w=prCanvas.clientWidth,h=prCanvas.clientHeight;
+  if(prCanvas.width!==Math.round(w*dpr)||prCanvas.height!==Math.round(h*dpr)){prCanvas.width=Math.round(w*dpr);prCanvas.height=Math.round(h*dpr);}
+  prCtx.setTransform(dpr,0,0,dpr,0,0);
+  prCtx.clearRect(0,0,w,h);
+  prCtx.fillStyle='#0b0d11';prCtx.fillRect(0,0,w,h);
+  if(!midiData||!prNotes.length){
+    prCtx.fillStyle='#9ca7b8';prCtx.font='12px system-ui,sans-serif';prCtx.textAlign='center';prCtx.textBaseline='middle';
+    prCtx.fillText('Load a MIDI file to see the piano roll.',w/2,h/2);prCtx.textAlign='left';return;
+  }
+  prClampScroll();
+  const black=[1,3,6,8,10];
+  prCtx.save();prCtx.beginPath();prCtx.rect(PR_GUTTER,PR_RULER,w-PR_GUTTER,h-PR_RULER);prCtx.clip();
+  for(let n=prLowNote;n<=prHighNote;n++){
+    const y=prYForNote(n);if(y+prRowH<PR_RULER||y>h)continue;
+    prCtx.fillStyle=black.includes(((n%12)+12)%12)?'#12151c':'#171b23';
+    prCtx.fillRect(PR_GUTTER,y,w-PR_GUTTER,prRowH);
+  }
+  const measure=prMeasureTicks();
+  if(measure>0&&measure*prPxPerTick()>3){
+    for(let t=0,bar=1;t<=prTotalTicks+measure;t+=measure,bar++){
+      const x=prXForTick(t);if(x<PR_GUTTER-1||x>w)continue;
+      prCtx.strokeStyle='#2a3140';prCtx.lineWidth=1;
+      prCtx.beginPath();prCtx.moveTo(Math.round(x)+.5,PR_RULER);prCtx.lineTo(Math.round(x)+.5,h);prCtx.stroke();
+    }
+  }
+  if(prSelStart!=null){
+    const x1=prXForTick(prSelStart),x2=prXForTick(prSelEnd);
+    prCtx.fillStyle='rgba(120,169,255,.13)';prCtx.fillRect(x1,PR_RULER,x2-x1,h-PR_RULER);
+    prCtx.strokeStyle='#78a9ff';prCtx.lineWidth=1;
+    prCtx.beginPath();prCtx.moveTo(Math.round(x1)+.5,PR_RULER);prCtx.lineTo(Math.round(x1)+.5,h);
+    prCtx.moveTo(Math.round(x2)+.5,PR_RULER);prCtx.lineTo(Math.round(x2)+.5,h);prCtx.stroke();
+  }
+  for(const n of prNotes){
+    const x=prXForTick(n.tick),bw=Math.max(2,n.dur*prPxPerTick()-1),y=prYForNote(n.note);
+    if(x+bw<PR_GUTTER||x>w||y+prRowH<PR_RULER||y>h)continue;
+    const inSel=prSelStart==null||(n.tick>=prSelStart&&n.tick<prSelEnd);
+    prCtx.fillStyle=n.included?(inSel?'#78a9ff':'#3a4a66'):'#2c333f';
+    prCtx.fillRect(Math.round(x),Math.round(y)+1,Math.round(bw),Math.max(2,prRowH-2));
+  }
+  prCtx.restore();
+  prCtx.fillStyle='#151922';prCtx.fillRect(0,0,PR_GUTTER,h);
+  prCtx.font='9px ui-monospace,SFMono-Regular,Consolas,monospace';prCtx.textBaseline='middle';
+  for(let n=prLowNote;n<=prHighNote;n++){
+    const y=prYForNote(n);if(y+prRowH<PR_RULER||y>h)continue;
+    const pc=((n%12)+12)%12,isC=pc===0;
+    if(prRowH>=8||isC){
+      prCtx.fillStyle=isC?'#e7ebf1':'#6c7789';
+      prCtx.fillText(noteName(n),4,y+prRowH/2);
+    }
+  }
+  prCtx.fillStyle='#151922';prCtx.fillRect(0,0,w,PR_RULER);
+  prCtx.strokeStyle='#343b49';prCtx.beginPath();prCtx.moveTo(0,PR_RULER+.5);prCtx.lineTo(w,PR_RULER+.5);prCtx.stroke();
+  prCtx.beginPath();prCtx.moveTo(PR_GUTTER+.5,0);prCtx.lineTo(PR_GUTTER+.5,h);prCtx.stroke();
+  if(measure>0){
+    prCtx.fillStyle='#9ca7b8';prCtx.font='9px ui-monospace,SFMono-Regular,Consolas,monospace';
+    const step=Math.max(1,Math.ceil(46/(measure*prPxPerTick())));
+    for(let t=0,bar=1;t<=prTotalTicks+measure;t+=measure,bar++){
+      if((bar-1)%step)continue;
+      const x=prXForTick(t);if(x<PR_GUTTER||x>w-8)continue;
+      prCtx.fillText(bar,x+2,PR_RULER/2);
+    }
+  }
+  const px=prXForTick(prPlayhead);
+  if(px>=PR_GUTTER&&px<=w){
+    prCtx.strokeStyle='#ff9292';prCtx.lineWidth=1.5;
+    prCtx.beginPath();prCtx.moveTo(px,0);prCtx.lineTo(px,h);prCtx.stroke();
+  }
+}
+function prStatusText(){
+  if(!midiData||!prNotes.length){$('prStatus').textContent='';return;}
+  const shown=prNotes.filter(n=>n.included).length;
+  let text=`${prNotes.length} notes, ${shown} passing filters`;
+  if(prSelStart!=null){
+    const m=prMeasureTicks();
+    text+=` — selection bars ${(prSelStart/m+1).toFixed(1)}–${(prSelEnd/m+1).toFixed(1)}`;
+  }
+  $('prStatus').textContent=text;
+}
+function prRefresh(){prBuildNotes();prDraw();prStatusText();}
+
+function prEnsureAudio(){
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+  return audioCtx;
+}
+function prTone(note,when,dur){
+  const ctx=audioCtx,osc=ctx.createOscillator(),gain=ctx.createGain();
+  osc.type=$('prWave').value;osc.frequency.value=440*Math.pow(2,(note-69)/12);
+  const len=Math.max(.08,Math.min(dur,3)),vol=Number($('prVol').value)/100*0.4;
+  gain.gain.setValueAtTime(0,when);
+  gain.gain.linearRampToValueAtTime(vol,when+.008);
+  gain.gain.exponentialRampToValueAtTime(.0001,when+len);
+  osc.connect(gain);gain.connect(ctx.destination);
+  osc.start(when);osc.stop(when+len+.02);
+}
+function prSchedule(){
+  if(!prPlaying)return;
+  const horizon=audioCtx.currentTime+.25,base=tickToSeconds(prStartTick);
+  while(prQueueIdx<prQueue.length){
+    const n=prQueue[prQueueIdx],when=prStartAudioTime+(tickToSeconds(n.tick)-base);
+    if(when>horizon)break;
+    if(when>=audioCtx.currentTime)prTone(n.note,when,tickToSeconds(n.tick+n.dur)-tickToSeconds(n.tick));
+    prQueueIdx++;
+  }
+  const endTick=prSelEnd!=null?prSelEnd:prTotalTicks;
+  if(audioCtx.currentTime>prStartAudioTime+(tickToSeconds(endTick)-base)+.3)prStop();
+}
+function prFrame(){
+  if(!prPlaying)return;
+  const base=tickToSeconds(prStartTick);
+  prPlayhead=secondsToTick(base+(audioCtx.currentTime-prStartAudioTime));
+  const x=prXForTick(prPlayhead);
+  if(x>prCanvas.clientWidth-60||x<PR_GUTTER)prScrollX=Math.max(0,prPlayhead*prPxPerTick()-prViewW()*.3);
+  prDraw();requestAnimationFrame(prFrame);
+}
+function prPlay(){
+  if(!midiData||!prNotes.length||prPlaying)return;
+  prEnsureAudio();
+  const from=prSelStart!=null?prSelStart:prPlayhead,to=prSelEnd!=null?prSelEnd:Infinity;
+  prQueue=prNotes.filter(n=>n.included&&n.tick>=from&&n.tick<to).sort((a,b)=>a.tick-b.tick);
+  if(!prQueue.length)return;
+  prQueueIdx=0;prStartTick=from;prPlayhead=from;
+  prStartAudioTime=audioCtx.currentTime+.08;prPlaying=true;
+  $('prPlay').textContent='\u23F8 Pause';
+  prTimer=setInterval(prSchedule,25);requestAnimationFrame(prFrame);
+}
+function prStop(){
+  prPlaying=false;clearInterval(prTimer);prTimer=null;
+  $('prPlay').textContent='\u25B6 Play';prDraw();
+}
+
+$('prPlay').addEventListener('click',()=>{prPlaying?prStop():prPlay();});
+$('prStop').addEventListener('click',()=>{prStop();prPlayhead=prSelStart!=null?prSelStart:0;prDraw();});
+$('prZoom').addEventListener('input',e=>{prPxPerQuarter=Number(e.target.value);prDraw();});
+$('prRows').addEventListener('input',e=>{prRowH=Number(e.target.value);prDraw();});
+$('prFit').addEventListener('click',()=>{prFitZoom();prDraw();});
+$('prSelClear').addEventListener('click',()=>{if(prSelStart==null)return;prSelStart=prSelEnd=null;regenerateNow();});
+prCanvas.addEventListener('wheel',e=>{
+  if(!midiData)return;e.preventDefault();
+  if(e.ctrlKey){
+    const tickAt=prTickForX(e.offsetX);
+    prPxPerQuarter=clamp(prPxPerQuarter*(e.deltaY<0?1.15:1/1.15),4,240);
+    $('prZoom').value=Math.round(prPxPerQuarter);
+    prScrollX=Math.max(0,tickAt*prPxPerTick()-(e.offsetX-PR_GUTTER));
+  }else if(e.shiftKey)prScrollX+=e.deltaY;
+  else prScrollY+=e.deltaY;
+  prDraw();
+},{passive:false});
+prCanvas.addEventListener('pointerdown',e=>{
+  if(!midiData||e.offsetX<PR_GUTTER)return;
+  prCanvas.setPointerCapture(e.pointerId);
+  prDragging=true;prDragMoved=false;prDragAnchor=Math.max(0,prTickForX(e.offsetX));
+});
+prCanvas.addEventListener('pointermove',e=>{
+  if(!prDragging)return;
+  const tick=Math.max(0,prTickForX(e.offsetX));
+  if(Math.abs(tick-prDragAnchor)*prPxPerTick()>3){
+    prDragMoved=true;
+    prSelStart=Math.min(prDragAnchor,tick);prSelEnd=Math.max(prDragAnchor,tick);
+    prDraw();prStatusText();
+  }
+});
+prCanvas.addEventListener('pointerup',e=>{
+  if(!prDragging)return;prDragging=false;
+  if(prDragMoved)regenerateNow();
+  else{prPlayhead=Math.max(0,prTickForX(e.offsetX));prDraw();}
+});
+if(window.ResizeObserver)new ResizeObserver(()=>prDraw()).observe(prCanvas);
+
+$('preset').addEventListener('change',e=>{if(PRESETS[e.target.value])setTuning(PRESETS[e.target.value]);regenerateNow();});
+$('stringCount').addEventListener('change',()=>{$('preset').value='custom';renderTuning();regenerateNow();});
+$('fileInput').addEventListener('change',e=>loadFile(e.target.files[0]));
+$('generate').addEventListener('click',generate);$('trackSelect').addEventListener('change',()=>{updateFilterRanges();generate();});$('outputMode').addEventListener('change',generate);
+['spelling','collapseRepeats','includeUnplayable','includePercussion','openInAllBands','preferString'].forEach(id=>$(id).addEventListener('change',regenerateNow));
+$('includePercussion').addEventListener('change',()=>updateFilterRanges());
+['transpose','minFret','maxFret','targetFret','eventsPerStaff','maxEvents','groupTolerance','positionStarts','positionWidth','eventStart','eventEnd','noteLow','noteHigh'].forEach(id=>$(id).addEventListener('input',scheduleRegenerate));
+$('transpose').addEventListener('input',syncNoteRange);
+$('noteLow').addEventListener('input',()=>{const v=Number($('noteLow').value);$('noteLowLabel').textContent=Number.isFinite(v)?`(${noteName(v)})`:''});
+$('noteHigh').addEventListener('input',()=>{const v=Number($('noteHigh').value);$('noteHighLabel').textContent=Number.isFinite(v)?`(${noteName(v)})`:''});
+$('copy').addEventListener('click',async()=>{if(!$('output').value)return;try{await navigator.clipboard.writeText($('output').value);$('outputStatus').textContent='TAB copied to clipboard.';}catch{$('output').select();document.execCommand('copy');$('outputStatus').textContent='TAB copied to clipboard.';}});
+$('download').addEventListener('click',()=>{if(!$('output').value)return;const base=(currentFileName||'midi').replace(/\.(mid|midi)$/i,'').replace(/[^a-z0-9._-]+/gi,'_'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([$('output').value],{type:'text/plain'}));a.download=`${base}_tab.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
+const drop=$('dropZone');['dragenter','dragover'].forEach(type=>drop.addEventListener(type,e=>{e.preventDefault();drop.classList.add('drag');}));['dragleave','drop'].forEach(type=>drop.addEventListener(type,e=>{e.preventDefault();drop.classList.remove('drag');}));drop.addEventListener('drop',e=>loadFile([...e.dataTransfer.files].find(f=>/\.(mid|midi)$/i.test(f.name))));
+setTuning(PRESETS.guitar6);
+prDraw();
+</script>
+</body>
+</html>
