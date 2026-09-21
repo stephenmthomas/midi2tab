@@ -376,12 +376,14 @@ function renderTuning(values=null){
   while(next.length<count){const last=parseNote(next[next.length-1]??'E2');next.push(noteName(clamp((last??40)+5,0,127)));}
   const grid=$('tuningGrid');
   grid.innerHTML='';
-  [...next].reverse().forEach((note,ri)=>{ const lowIndex=count-1-ri;
+  next.forEach((note,lowIndex)=>{
     const label=document.createElement('div'),input=document.createElement('input');
     label.className='string-label';
     label.textContent=`String ${count-lowIndex}${lowIndex===0?' (lowest)':lowIndex===count-1?' (highest)':''}`;
+    const rowOrder=count-1-lowIndex;label.style.order=rowOrder;
     input.type='text';
     input.value=note;
+    input.style.order=rowOrder;
     input.className='tuning-note';
     input.dataset.lowIndex=lowIndex;
     input.addEventListener('input',()=>{$('preset').value='custom';
