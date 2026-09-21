@@ -32,7 +32,7 @@
   .status.error { color:var(--bad); }
   .drop { border:1px dashed #596478; border-radius:6px; padding:10px; text-align:center; color:var(--muted); }
   .drop.drag { border-color:var(--accent); color:var(--text); background:#18243a; }
-  textarea { width:100%; min-height:740px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#0b0d11; color:#dce5f1; padding:12px; font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; tab-size:4; white-space:pre; }
+  textarea { width:100%; min-height:300px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#0b0d11; color:#dce5f1; padding:12px; font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; tab-size:4; white-space:pre; }
   .help { color:var(--muted); font-size:12px; }
   code { color:#cbd8ef; }
   .subpanel { border-top:1px solid var(--line); padding-top:12px; }
@@ -58,13 +58,16 @@
 </style>
 </head>
 <body>
+
+
 <main>
   <h1>MIDI2TAB</h1>
-  <p class="lede">MIDI to Tab Tool + Robust Feature Set</p>
+
+  <p class="lede">Convert MIDI to Tab</p>
 
   <div class="grid">
-    <section class="panel stack">
 
+    <section class="panel stack">
       <details class="section" open>
         <summary>MIDI File</summary>
         <div class="section-body">
@@ -92,6 +95,8 @@
               </select>
             </label>
           </div>
+          <hr>
+          <div class="help">Horizontal Trim — narrow the range of note events that get tabbed. Defaults reset when a file or track is loaded.</div>
           <div class="row">
             <label>Read From [Event #]
               <input id="eventStart" type="number" min="0" max="0" value="0">
@@ -100,7 +105,8 @@
               <input id="eventEnd" type="number" min="0" max="0" value="0">
             </label>
           </div>
-          <div class="help">Horizontal Trim — narrow the range of note events that get tabbed. Defaults reset when a file or track is loaded.</div>
+          <hr>
+          <div class="help">Vertical Trim — exclude notes outside this MIDI pitch range. Raise the low or lower the high to ignore octaves.</div>
           <div class="row">
             <label>Lowest Note <span id="noteLowLabel" style="font-weight:400"></span>
               <input id="noteLow" type="number" min="0" max="127" value="0">
@@ -109,14 +115,26 @@
               <input id="noteHigh" type="number" min="0" max="127" value="127">
             </label>
           </div>
-          <div class="help">Vertical Trim — exclude notes outside this MIDI pitch range. Raise the low or lower the high to ignore octaves.</div>
+          <hr>
+          <div class="row">
+            <label>Prefer single string (sequential tab)
+              <select id="preferString"><option value="">Any string</option></select>
+            </label>
+            <div class="help" style="align-self:end">Try to keep notes on this string (sequential tab).</div>
+          </div>
+          <div class="row">
+            <label>Target fret (position bias)
+              <input id="targetFret" type="number" min="0" max="48" value="0">
+            </label>
+            <div class="help" style="align-self:end">Hand position. Pulls fret choices toward this fret, clamped to the min/max range above..</div>
+          </div>
         </div>
       </details>
 
       <details class="section">
         <summary>Note Matrix</summary>
         <div class="section-body">
-          <div class="help">Toggle individual notes on/off. Disabled checkboxes are pitches not present in the loaded track.</div>
+          <div class="help">Unchecked notes are ignored in the tab output.</div>
           <div id="noteMatrix" class="help" style="color:var(--muted)">Load a MIDI file to populate.</div>
         </div>
       </details>
@@ -143,27 +161,23 @@
             </label>
           </div>
           <div>
-            <div class="help" style="margin-bottom:6px">Enter Tuning <b>lowest string to highest</b>: <code>E2</code>, <code>Bb1</code>, <code>F#3</code>, or MIDI note number.</div>
+            <div class="help" style="margin-bottom:6px">Enter Tuning <b>[high to low]</b> or <code>MIDI note number.</code></div>
             <div id="tuningGrid" class="tuning-grid"></div>
           </div>
         </div>
       </details>
 
       <details class="section">
-        <summary>Fret Range</summary>
+        <summary>Range & Transpose</summary>
         <div class="section-body">
+
           <div class="row">
             <label>Transpose (semitones)
-              <input id="transpose" type="number" min="-36" max="36" step="1" value="0">
+              <input id="transpose" type="number" min="-48" max="48" step="1" value="0">
             </label>
             <div class="help" style="align-self:end">Shifts every interpreted MIDI pitch before fretting it. +12 lifts a bass line one octave. The MIDI file itself is never modified.</div>
           </div>
-          <div class="row">
-            <label>Prefer single string (sequential tab)
-              <select id="preferString"><option value="">Any string</option></select>
-            </label>
-            <div class="help" style="align-self:end">Keeps the sequential tab on one string where it can. Notes that don’t reach move to another string rather than dropping out.</div>
-          </div>
+
           <div class="row">
             <label>Minimum fret
               <input id="minFret" type="number" min="0" max="48" value="0">
@@ -172,12 +186,8 @@
               <input id="maxFret" type="number" min="0" max="48" value="24">
             </label>
           </div>
-          <div class="row">
-            <label>Target fret (position bias)
-              <input id="targetFret" type="number" min="0" max="48" value="0">
-            </label>
-            <div class="help" style="align-self:end">Pulls fret choices toward this fret, clamped to the min/max range above. Leave at 0 for the original low-fret behavior.</div>
-          </div>
+
+
         </div>
       </details>
 
@@ -233,44 +243,68 @@
     </section>
 
     <section class="panel stack">
-      <div id="outputStatus" class="status">Tab Output - Load a MIDI file to begin.</div>
-      <textarea id="output" spellcheck="false" wrap="off" aria-label="Generated guitar tablature"></textarea>
+      <details class="section" open>
+        <summary><div id="outputStatus" class="status">Tab Output - Load a MIDI file to begin.</div></summary>
+          <div class="section-body">          
+              <textarea id="output" spellcheck="false" wrap="off" aria-label="Generated guitar tablature"></textarea>
+          </div>
+      </details>
+    
+      <details class="section">
+        <summary>Piano Roll / Sequence Selection</summary>
+          <div class="section-body">
+            <div class="pr-toolbar">           
+              <button id="prPlay">&#9654; Play</button>
+              <button id="prStop">&#9632; Stop</button>
+              <label>Zoom <input id="prZoom" type="range" min="4" max="240" value="40"></label>
+              <label>Rows <input id="prRows" type="range" min="4" max="26" value="10"></label>
+              <button id="prFit">Fit</button>
+              <button id="prSelClear">Clear selection</button>
+              <label>Wave <select id="prWave" style="min-height:26px;padding:2px 4px;font-size:11px;width:auto;"><option>triangle</option><option>sine</option><option>square</option><option>sawtooth</option></select></label>
+              <label>Vol <input id="prVol" type="range" min="0" max="100" value="40"></label>
+              <span id="prStatus" class="help"></span>
+            </div>
 
-      <div class="pr-wrap">
-        <div class="pr-toolbar">
-          <button id="prPlay">&#9654; Play</button>
-          <button id="prStop">&#9632; Stop</button>
-          <label>Zoom <input id="prZoom" type="range" min="4" max="240" value="40"></label>
-          <label>Rows <input id="prRows" type="range" min="4" max="26" value="10"></label>
-          <button id="prFit">Fit</button>
-          <button id="prSelClear">Clear selection</button>
-          <label>Wave <select id="prWave" style="min-height:26px;padding:2px 4px;font-size:11px;width:auto;"><option>triangle</option><option>sine</option><option>square</option><option>sawtooth</option></select></label>
-          <label>Vol <input id="prVol" type="range" min="0" max="100" value="40"></label>
-          <span id="prStatus" class="help"></span>
-        </div>
-        <canvas id="prCanvas"></canvas>
-        <div class="help">Drag across the roll to select a time range &mdash; the TAB then generates from that range only. Click to move the playhead. Wheel scrolls vertically, Shift+wheel horizontally, Ctrl+wheel zooms. Dimmed notes are excluded by the current filters.</div>
-      </div>
+            <canvas id="prCanvas"></canvas>
+
+            <div class="help">Drag across the roll to select a time range &mdash; the TAB then generates from that range only. Click to move the playhead. Wheel scrolls vertically, Shift+wheel horizontally, Ctrl+wheel zooms. Dimmed notes are excluded by the current filters.</div>
+          </div>
+      </details>
+
     </section>
+
   </div>
 </main>
 
 <script>
+
+
 'use strict';
 
+// #region DECLARATIONS
 const PRESETS = {
-  guitar6:['E2','A2','D3','G3','B3','E4'], dropd:['D2','A2','D3','G3','B3','E4'], guitar7:['B1','E2','A2','D3','G3','B3','E4'],
-  dadgad:['D2','A2','D3','G3','A3','D4'], bass4:['E1','A1','D2','G2'], dropdbass:['D1','A1','D2','G2'],
-  bass5:['B0','E1','A1','D2','G2'], bass6:['B0','E1','A1','D2','G2','C3']
+  guitar6:['E2','A2','D3','G3','B3','E4'], 
+  dropd:['D2','A2','D3','G3','B3','E4'], 
+  guitar7:['B1','E2','A2','D3','G3','B3','E4'],
+  dadgad:['D2','A2','D3','G3','A3','D4'], 
+  bass4:['E1','A1','D2','G2'], 
+  dropdbass:['D1','A1','D2','G2'],
+  bass5:['B0','E1','A1','D2','G2'], 
+  bass6:['B0','E1','A1','D2','G2','C3']
 };
+
 const NAMES_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const NAMES_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+
 const $=id=>document.getElementById(id);
 let midiData=null, currentFileName='';
 const excludedNotes=new Set();
 let baseNoteLow=0, baseNoteHigh=127;
 let prSelStart=null, prSelEnd=null;
 
+// #endregion
+
+// #region UTILITY FUNCTIONS
 function clamp(n,lo,hi){return Math.max(lo,Math.min(hi,n));}
 function syncField(id,value){const el=$(id);if(document.activeElement!==el)el.value=value;}
 function readTranspose(){const t=clamp(Math.round(Number($('transpose').value)||0),-36,36);syncField('transpose',t);return t;}
@@ -281,7 +315,13 @@ function readU16(a,p){return(a[p]<<8)|a[p+1];}
 function readU32(a,p){return((a[p]*0x1000000)+(a[p+1]<<16)+(a[p+2]<<8)+a[p+3])>>>0;}
 function readVLQ(a,s){let v=0,c=0;while(s.p<a.length&&c++<4){const b=a[s.p++];v=(v<<7)|(b&0x7f);if(!(b&0x80))return v;}throw new Error('Invalid variable-length MIDI value.');}
 function ascii(bytes){return String.fromCharCode(...bytes).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'').trim();}
+// #endregion
 
+
+//DP:  Ct​(j)=Lt​(j)+kmin​[Ct−1​(k)+T(k,j)]
+// contained in funcs: shapeCandidates, arrangePlayableSequence
+
+// #region MIDI-TAB PARSING 
 function parseMidi(buffer){
   const a=new Uint8Array(buffer);
   if(a.length<14||ascii(a.slice(0,4))!=='MThd')throw new Error('Not a Standard MIDI File.');
@@ -322,7 +362,6 @@ function parseMidi(buffer){
   tempos.sort((a,b)=>a.tick-b.tick);timeSignatures.sort((a,b)=>a.tick-b.tick);
   return{format,ppq:division,tracks,tempos,timeSignatures};
 }
-
 function parseNote(value){
   const raw=String(value).trim();if(/^\d+$/.test(raw)){const n=Number(raw);return n>=0&&n<=127?n:null;}
   const m=raw.match(/^([A-Ga-g])([#b]?)(-?\d+)$/);if(!m)return null;
@@ -335,10 +374,19 @@ function renderTuning(values=null){
   const count=clamp(Number($('stringCount').value)||1,1,12);$('stringCount').value=count;
   const old=values||[...document.querySelectorAll('.tuning-note')].map(x=>x.value),next=old.slice(0,count);
   while(next.length<count){const last=parseNote(next[next.length-1]??'E2');next.push(noteName(clamp((last??40)+5,0,127)));}
-  const grid=$('tuningGrid');grid.innerHTML='';next.forEach((note,lowIndex)=>{
+  const grid=$('tuningGrid');
+  grid.innerHTML='';
+  [...next].reverse().forEach((note,ri)=>{ const lowIndex=count-1-ri;
     const label=document.createElement('div'),input=document.createElement('input');
-    label.className='string-label';label.textContent=`String ${count-lowIndex}${lowIndex===0?' (lowest)':lowIndex===count-1?' (highest)':''}`;
-    input.type='text';input.value=note;input.className='tuning-note';input.dataset.lowIndex=lowIndex;input.addEventListener('input',()=>{$('preset').value='custom';refreshPreferString();scheduleRegenerate();});
+    label.className='string-label';
+    label.textContent=`String ${count-lowIndex}${lowIndex===0?' (lowest)':lowIndex===count-1?' (highest)':''}`;
+    input.type='text';
+    input.value=note;
+    input.className='tuning-note';
+    input.dataset.lowIndex=lowIndex;
+    input.addEventListener('input',()=>{$('preset').value='custom';
+    refreshPreferString();
+    scheduleRegenerate();});
     grid.append(label,input);
   });
   renderPreferString(next,count);
@@ -408,6 +456,8 @@ function sequentialLowestFretOutput(events,tuning,minFret,maxFret,targetFret=0){
 Exact MIDI pitches in chronological order; simultaneous notes form compact vertical shapes.`);
   return body;
 }
+
+
 function shapeCandidates(notes,tuning,minFret,maxFret,targetFret=0){
   const ordered=[...new Set(notes)].sort((a,b)=>positionsFor(a,tuning,minFret,maxFret).length-positionsFor(b,tuning,minFret,maxFret).length||a-b),options=ordered.map(note=>positionsFor(note,tuning,minFret,maxFret)),raw=[];let maxAssigned=0;
   function recurse(i,used,chosen){
@@ -436,6 +486,8 @@ function arrangePlayableSequence(groups,tuning,minFret,maxFret,targetFret=0){
   const result=new Array(groups.length);let index=costs.at(-1).reduce((best,value,i,a)=>value<a[best]?i:best,0);
   for(let i=groups.length-1;i>=0;i--){result[i]=candidates[i][index];index=parents[i][index];}return result;
 }
+
+
 function header(tuning,minFret,maxFret,eventCount,sourceCount,targetFret=0,transpose=0){
   const track=$('trackSelect').selectedOptions[0]?.textContent||'All note tracks';
   return[
@@ -558,6 +610,8 @@ function syncNoteRange(){
   $('noteLowLabel').textContent=lo>=0&&lo<=127?`(${noteName(lo)})`:'';
   $('noteHighLabel').textContent=hi>=0&&hi<=127?`(${noteName(hi)})`:'';
 }
+// #endregion
+
 function generate(){
   try{
     if(!midiData)throw new Error('Load a MIDI file first.');const tuning=readTuning();
@@ -583,8 +637,7 @@ async function loadFile(file){
   }catch(err){midiData=null;$('fileStatus').textContent=err.message;$('fileStatus').className='status error';}
 }
 
-
-/* ---------- piano roll ---------- */
+// #region PIANO ROLL 
 const PR_GUTTER=46, PR_RULER=20;
 const prCanvas=$('prCanvas'), prCtx=prCanvas.getContext('2d');
 let tempoMap=[], prNotes=[], prLowNote=48, prHighNote=72, prTotalTicks=0;
@@ -733,7 +786,6 @@ function prStatusText(){
   $('prStatus').textContent=text;
 }
 function prRefresh(){prBuildNotes();prDraw();prStatusText();}
-
 function prEnsureAudio(){
   if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
   if(audioCtx.state==='suspended')audioCtx.resume();
@@ -821,6 +873,11 @@ prCanvas.addEventListener('pointerup',e=>{
   if(prDragMoved)regenerateNow();
   else{prPlayhead=Math.max(0,prTickForX(e.offsetX));prDraw();}
 });
+
+// #endregion PIANO ROLL
+
+
+// #region LISTENERS
 if(window.ResizeObserver)new ResizeObserver(()=>prDraw()).observe(prCanvas);
 
 $('preset').addEventListener('change',e=>{if(PRESETS[e.target.value])setTuning(PRESETS[e.target.value]);regenerateNow();});
@@ -836,8 +893,15 @@ $('noteHigh').addEventListener('input',()=>{const v=Number($('noteHigh').value);
 $('copy').addEventListener('click',async()=>{if(!$('output').value)return;try{await navigator.clipboard.writeText($('output').value);$('outputStatus').textContent='TAB copied to clipboard.';}catch{$('output').select();document.execCommand('copy');$('outputStatus').textContent='TAB copied to clipboard.';}});
 $('download').addEventListener('click',()=>{if(!$('output').value)return;const base=(currentFileName||'midi').replace(/\.(mid|midi)$/i,'').replace(/[^a-z0-9._-]+/gi,'_'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([$('output').value],{type:'text/plain'}));a.download=`${base}_tab.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
 const drop=$('dropZone');['dragenter','dragover'].forEach(type=>drop.addEventListener(type,e=>{e.preventDefault();drop.classList.add('drag');}));['dragleave','drop'].forEach(type=>drop.addEventListener(type,e=>{e.preventDefault();drop.classList.remove('drag');}));drop.addEventListener('drop',e=>loadFile([...e.dataTransfer.files].find(f=>/\.(mid|midi)$/i.test(f.name))));
+// #endregion
+
+// #region INITIALIZATION
+
 setTuning(PRESETS.guitar6);
 prDraw();
+// #endregion
+
+
 </script>
 </body>
 </html>
