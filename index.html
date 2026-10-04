@@ -4,12 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MIDI2TAB</title>
+
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+
 <style>
-  :root { color-scheme:dark; --bg:#101217; --panel:#191d25; --line:#343b49; --text:#e7ebf1; --muted:#9ca7b8; --accent:#78a9ff; --bad:#ff9292; }
+  :root { color-scheme:dark; --bg:#101217; --panel:#191d25; --line:#343b49; --text:#e7ebf1; --muted:#9ca7b8; --accent:#E8C049; --hot:#FF3300; --bad:#ff9292; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui,sans-serif; }
   main { max-width:100vw; margin:0 auto; padding:20px; }
-  h1 { margin:0 0 4px; font-size:24px; }
+  h1 { margin:0 0 4px; font-size:24px; color:var(--accent); display:inline-block; border-bottom:3px solid var(--hot); padding-bottom:2px; }
   .lede { margin:0 0 16px; color:var(--muted); max-width:900px; }
   .grid { display:grid; grid-template-columns:minmax(330px,430px) 1fr; gap:16px; align-items:start; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
@@ -19,8 +22,10 @@
   input[type=file], input[type=number], input[type=text], select { width:100%; min-height:36px; border:1px solid var(--line); border-radius:5px; background:#101319; color:var(--text); padding:7px 9px; }
   input[type=file] { padding:5px; }
   button { min-height:36px; border:1px solid var(--line); border-radius:5px; background:#252b36; color:var(--text); padding:7px 12px; cursor:pointer; }
-  button.primary { background:#275ba7; border-color:#3975cb; }
+  button.primary { background:var(--hot); border-color:#cc2900; color:#0b0b0b; font-weight:700; }
   button:hover { filter:brightness(1.12); }
+  button:not(.primary):hover { border-color:var(--accent); }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .buttons { display:flex; flex-wrap:wrap; gap:8px; }
   .check { display:flex; gap:8px; align-items:center; color:var(--text); font-weight:500; }
@@ -31,13 +36,14 @@
   .status { min-height:21px; color:var(--muted); }
   .status.error { color:var(--bad); }
   .drop { border:1px dashed #596478; border-radius:6px; padding:10px; text-align:center; color:var(--muted); }
-  .drop.drag { border-color:var(--accent); color:var(--text); background:#18243a; }
+  .drop.drag { border-color:var(--accent); color:var(--text); background:#2b2410; }
   textarea { width:100%; min-height:300px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#0b0d11; color:#dce5f1; padding:12px; font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; tab-size:4; white-space:pre; }
   .help { color:var(--muted); font-size:12px; }
-  code { color:#cbd8ef; }
+  code { color:var(--accent); }
   .subpanel { border-top:1px solid var(--line); padding-top:12px; }
   .section { border:1px solid var(--line); border-radius:6px; background:rgba(255,255,255,.018); overflow:hidden; }
   .section > summary { list-style:none; cursor:pointer; user-select:none; padding:10px 12px; font-weight:650; font-size:12px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,.018); }
+  .section > summary:hover { color:var(--accent); }
   .section > summary::-webkit-details-marker { display:none; }
   .section > summary::after { content:"▾"; color:var(--muted); }
   .section:not([open]) > summary::after { content:"▸"; }
@@ -61,6 +67,7 @@
 
 
 <main>
+  
   <h1>MIDI2TAB</h1>
 
   <p class="lede">Convert MIDI to Tab</p>
@@ -83,6 +90,19 @@
         <summary>Track &amp; Output</summary>
         <div class="section-body">
           <div class="row">
+            <label class="check" title="Tab output follows tempo and song structure"><input id="flowMode" type="checkbox" checked title="Tab output follows tempo and song structure"> Flow Mode</label>
+            
+            <label title="Quantize the flow grid for tab output">Flow grid (quantize)
+              <select id="flowGrid">
+                <option value="4">1/4 notes</option>
+                <option value="8">1/8 notes</option>
+                <option value="16" selected>1/16 notes</option>
+                <option value="32">1/32 notes</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="row">
             <label>MIDI Track
               <select id="trackSelect"><option value="all">All note tracks</option></select>
             </label>
@@ -98,32 +118,32 @@
           <hr>
           <div class="help">Horizontal Trim — narrow the range of note events that get tabbed. Defaults reset when a file or track is loaded.</div>
           <div class="row">
-            <label>Read From [Event #]
+            <label title="Specify the starting event number for horizontal trim">Read From [Event #]
               <input id="eventStart" type="number" min="0" max="0" value="0">
             </label>
-            <label>Read To [Event #]
+            <label title="Specify the ending event number for horizontal trim">Read To [Event #]
               <input id="eventEnd" type="number" min="0" max="0" value="0">
             </label>
           </div>
           <hr>
           <div class="help">Vertical Trim — exclude notes outside this MIDI pitch range. Raise the low or lower the high to ignore octaves.</div>
           <div class="row">
-            <label>Lowest Note <span id="noteLowLabel" style="font-weight:400"></span>
+            <label title="Specify the lowest MIDI pitch to include in the tab output">Lowest Note <span id="noteLowLabel" style="font-weight:400"></span>
               <input id="noteLow" type="number" min="0" max="127" value="0">
             </label>
-            <label>Highest Note <span id="noteHighLabel" style="font-weight:400"></span>
+            <label title="Specify the highest MIDI pitch to include in the tab output">Highest Note <span id="noteHighLabel" style="font-weight:400"></span>
               <input id="noteHigh" type="number" min="0" max="127" value="127">
             </label>
           </div>
           <hr>
           <div class="row">
-            <label>Prefer single string (sequential tab)
+            <label title="Prefer to keep notes on a single string for sequential tab output">Prefer single string (sequential tab)
               <select id="preferString"><option value="">Any string</option></select>
             </label>
             <div class="help" style="align-self:end">Try to keep notes on this string (sequential tab).</div>
           </div>
           <div class="row">
-            <label>Target fret (position bias)
+            <label title="Specify the target fret for position bias in tab output">Target fret (position bias)
               <input id="targetFret" type="number" min="0" max="48" value="0">
             </label>
             <div class="help" style="align-self:end">Hand position. Pulls fret choices toward this fret, clamped to the min/max range above..</div>
@@ -140,19 +160,25 @@
       </details>
 
       <details class="section">
-        <summary>Tuning</summary>
+        <summary title="Specify the tuning for each string of the instrument">Tuning</summary>
         <div class="section-body">
           <div class="tuning-head">
             <label style="flex:1">Preset
               <select id="preset">
-                <option value="guitar6">6-string guitar — E A D G B E</option>
-                <option value="dropd">6-string guitar — Drop D</option>
+                <option>-GUITARS</option>
                 <option value="guitar7">7-string guitar — B E A D G B E</option>
+                <option value="guitar6">6-string guitar — E A D G B E</option>
+                <option value="dstandard">6-st Gtr - D Std Whole Step Down</option>
+                <option value="dropd">6-string guitar — Drop D</option>
+                <option value="dropc">6-string guitar — Drop C</option>
                 <option value="dadgad">6-string guitar — DADGAD</option>
+                <option>-BASSES</option>
+                <option value="bass6">6-string bass — B E A D G C</option>
+                <option value="bass5">5-string bass — B E A D G</option>
                 <option value="bass4">4-string bass — E A D G</option>
                 <option value="dropdbass">4-string bass — Drop D</option>
-                <option value="bass5">5-string bass — B E A D G</option>
-                <option value="bass6">6-string bass — B E A D G C</option>
+                <option>-CUSTOM</option>
+                
                 <option value="custom">Custom</option>
               </select>
             </label>
@@ -172,17 +198,17 @@
         <div class="section-body">
 
           <div class="row">
-            <label>Transpose (semitones)
-              <input id="transpose" type="number" min="-48" max="48" step="1" value="0">
+            <label title="Shift every interpreted MIDI pitch before fretting it. +12 lifts a bass line one octave. The MIDI file itself is never modified.">Transpose (semitones)
+              <input id="transpose" type="number" min="-96" max="96" step="1" value="0">
             </label>
             <div class="help" style="align-self:end">Shifts every interpreted MIDI pitch before fretting it. +12 lifts a bass line one octave. The MIDI file itself is never modified.</div>
           </div>
 
           <div class="row">
-            <label>Minimum fret
+            <label title="Specify the minimum fret to include in the tab output">Minimum fret
               <input id="minFret" type="number" min="0" max="48" value="0">
             </label>
-            <label>Maximum fret
+            <label title="Specify the maximum fret to include in the tab output">Maximum fret
               <input id="maxFret" type="number" min="0" max="48" value="24">
             </label>
           </div>
@@ -194,24 +220,26 @@
       <details class="section">
         <summary>Tab Layout</summary>
         <div class="section-body">
+  
           <div class="row">
-            <label>Events per Staff
+            <label title="Specify the number of events to display per staff line">Events per Staff
               <input id="eventsPerStaff" type="number" min="4" max="40" value="16">
             </label>
-            <label>Maximum event groups
+            <label title="Specify the maximum number of event groups to include in the tab output">Maximum event groups
               <input id="maxEvents" type="number" min="1" max="100000" value="2000">
             </label>
           </div>
+
           <div id="positionControls" class="subpanel stack">
             <div class="row">
-              <label>Fret-position starts
+              <label title="Specify the starting frets for each fret-position pass in the output mode 'Separate fret-position passes.'">Fret-position starts
                 <input id="positionStarts" type="text" value="0, 5, 9, 12, 17">
               </label>
-              <label>Position width (frets)
+              <label title="Specify the width (in frets) for each fret-position pass in the output mode 'Separate fret-position passes.'">Position width (frets)
                 <input id="positionWidth" type="number" min="1" max="12" value="5">
               </label>
             </div>
-            <div class="help">Used by “Separate fret-position passes.” Example: start 5 with width 5 uses frets 5–9.</div>
+            <div class="help">Used by output mode 'Separate fret-position passes.' Example: start 5 with width 5 uses frets 5–9.</div>
           </div>
         </div>
       </details>
@@ -220,17 +248,17 @@
         <summary>Options</summary>
         <div class="section-body">
           <div class="row">
-            <label>Chord grouping tolerance (ticks)
+            <label title="Specify the tolerance (in ticks) for grouping chords together">Chord grouping tolerance (ticks)
               <input id="groupTolerance" type="number" min="0" max="960" value="0">
             </label>
-            <label>Note spelling
+            <label title="Specify whether to display note names using sharps or flats">Note spelling
               <select id="spelling"><option value="sharp">Sharps</option><option value="flat">Flats</option></select>
             </label>
           </div>
-          <label class="check"><input id="collapseRepeats" type="checkbox"> Collapse consecutive identical note groups</label>
-          <label class="check"><input id="includeUnplayable" type="checkbox" checked> Mark notes outside the selected fretboard</label>
-          <label class="check"><input id="openInAllBands" type="checkbox" checked> Include open strings in all fret positions</label>
-          <label class="check"><input id="includePercussion" type="checkbox"> Include MIDI channel 10 percussion notes</label>
+          <label class="check" title="Collapse consecutive identical note groups"><input id="collapseRepeats" type="checkbox"> Collapse consecutive identical note groups</label>
+          <label class="check" title="Mark notes outside the selected fretboard"><input id="includeUnplayable" type="checkbox" checked> Mark notes outside the selected fretboard</label>
+          <label class="check" title="Include open strings in all fret positions"><input id="openInAllBands" type="checkbox" checked> Include open strings in all fret positions</label>
+          <label class="check" title="Include MIDI channel 10 percussion notes"><input id="includePercussion" type="checkbox"> Include MIDI channel 10 percussion notes</label>
         </div>
       </details>
 
@@ -239,7 +267,7 @@
         <button id="copy">Copy text</button>
         <button id="download">Save .txt</button>
       </div>
-      <div class="help">Attack order is preserved, but note durations and rhythmic spacing are intentionally not transcribed. Everything runs locally in the browser.</div>
+      <div class="help">With Flow Mode on, columns are spaced on the chosen rhythmic grid and staves break at bar lines (max 4 bars/line); with it off, only attack order is kept and durations are not transcribed. Everything runs locally in the browser.</div>
     </section>
 
     <section class="panel stack">
@@ -250,7 +278,7 @@
           </div>
       </details>
     
-      <details class="section">
+      <details class="section" open>
         <summary>Piano Roll / Sequence Selection</summary>
           <div class="section-body">
             <div class="pr-toolbar">           
@@ -271,9 +299,14 @@
           </div>
       </details>
 
-    </section>
+      <center>
+        <img src="logo2.png" alt="Logo" style="width:200px; justify-content:center; align-self:center; margin-top:12px;">
+      </center>
 
-  </div>
+
+    </section>
+  
+</div>
 </main>
 
 <script>
@@ -284,7 +317,9 @@
 // #region DECLARATIONS
 const PRESETS = {
   guitar6:['E2','A2','D3','G3','B3','E4'], 
+  dstandard:['D2','G2','C3','F3','A3','D4'],
   dropd:['D2','A2','D3','G3','B3','E4'], 
+  dropc:['C2','G2','C3','F3','A3','D4'],
   guitar7:['B1','E2','A2','D3','G3','B3','E4'],
   dadgad:['D2','A2','D3','G3','A3','D4'], 
   bass4:['E1','A1','D2','G2'], 
@@ -519,9 +554,64 @@ function renderStaff(groups,tuning,getCells,title,startNumber=1){
   lines.push(posLine,'');return lines.join('\n');
 }
 function chunkedStaffOutput(groups,tuning,getCells,titleForChunk){
+  if(midiData&&$('flowMode').checked)return flowStaffOutput(groups,tuning,getCells,titleForChunk);
   const n=clamp(Number($('eventsPerStaff').value)||16,4,40),chunks=[];
   for(let i=0;i<groups.length;i+=n){const chunk=groups.slice(i,i+n);chunks.push(renderStaff(chunk,tuning,(g,j)=>getCells(g,i+j),titleForChunk(i,Math.min(i+n,groups.length))));}
   return chunks.join('\n');
+}
+// Flow Mode: lay columns on a rhythmic grid, break staves at bar lines.
+function barInfoAt(tick){
+  const ts=[...midiData.timeSignatures].reverse().find(x=>x.tick<=tick)||{tick:0,numerator:4,denominator:4};
+  const beatTicks=midiData.ppq*4/ts.denominator,measureTicks=Math.max(1,beatTicks*ts.numerator),local=Math.max(0,tick-ts.tick);
+  return{barStart:ts.tick+Math.floor(local/measureTicks)*measureTicks,measureTicks,ts};
+}
+function flowStaffOutput(groups,tuning,getCells,titleForChunk){
+  if(!groups.length)return`${titleForChunk(0,0)}\n(no events)\n`;
+  const gridDen=clamp(Number($('flowGrid').value)||16,1,64),cellTicks=Math.max(1,Math.round(midiData.ppq*4/gridDen));
+  const highToLow=[...tuning].reverse(),labelWidth=Math.max(...highToLow.map(s=>noteName(s.note).length))+1;
+  // Render every group's cells once, and size all grid cells to the widest content so bars align across lines.
+  const groupMaps=groups.map((g,gi)=>getCells(g,gi));let maxW=1;
+  for(const m of groupMaps)for(const v of m.values()){const L=String(v).length;if(L>maxW)maxW=L;}
+  const cellW=maxW+1;
+  // Enumerate the bars spanning first..last attack (respecting any time-signature changes).
+  const firstTick=groups[0].tick,lastTick=groups[groups.length-1].tick,bars=[];
+  for(let t=barInfoAt(firstTick).barStart;t<=lastTick;){
+    const info=barInfoAt(t),cells=Math.max(1,Math.round(info.measureTicks/cellTicks));
+    bars.push({startTick:t,cells,bar:musicalPosition(t).bar,slots:new Array(cells).fill(-1)});
+    t+=info.measureTicks;if(bars.length>200000)break;
+  }
+  // Snap each group to its grid cell; on a collision bump to the next free cell in the bar.
+  let bi=0;
+  groups.forEach((g,gi)=>{
+    while(bi+1<bars.length&&bars[bi+1].startTick<=g.tick)bi++;
+    const b=bars[bi];let cell=clamp(Math.round((g.tick-b.startTick)/cellTicks),0,b.cells-1);
+    while(cell<b.cells&&b.slots[cell]!==-1)cell++;
+    b.slots[Math.min(cell,b.cells-1)]=gi;
+  });
+  // Pack bars into staff lines: fit to a width budget, never more than 4 bars.
+  const MAX_BARS=4,MAX_WIDTH=180,lines=[];let line=[],width=0;
+  for(const b of bars){
+    const bw=b.cells*cellW+1;
+    if(line.length&&(line.length>=MAX_BARS||width+bw>MAX_WIDTH)){lines.push(line);line=[];width=0;}
+    line.push(b);width+=bw;
+  }
+  if(line.length)lines.push(line);
+  const out=[];
+  for(const ln of lines){
+    let firstGi=Infinity,lastGi=-1;
+    for(const b of ln)for(const gi of b.slots)if(gi>=0){if(gi<firstGi)firstGi=gi;if(gi>lastGi)lastGi=gi;}
+    out.push(titleForChunk(firstGi<Infinity?firstGi:0,lastGi+1));
+    let ruler=' '.repeat(labelWidth+1);
+    for(const b of ln)ruler+=String(b.bar).padEnd(b.cells*cellW,' ')+' ';
+    out.push(ruler.replace(/\s+$/,''));
+    highToLow.forEach(s=>{
+      let row=noteName(s.note).padStart(labelWidth,' ')+'|';
+      for(const b of ln){for(let c=0;c<b.cells;c++){const gi=b.slots[c];row+=fretCell(gi>=0?(groupMaps[gi].get(s.lowIndex)??''):'',cellW);}row+='|';}
+      out.push(row);
+    });
+    out.push('');
+  }
+  return out.join('\n');
 }
 function allPositionsOutput(groups,tuning,minFret,maxFret){
   const includeBad=$('includeUnplayable').checked;
@@ -545,11 +635,14 @@ function bestAssignment(notes,tuning,minFret,maxFret,bandStart=null,bandEnd=null
   }
   recurse(0,new Set(),new Map(),0,0);return best??{chosen:new Map(),assigned:0,score:0};
 }
+
 function lowestOutput(groups,tuning,minFret,maxFret,targetFret=null){
   return chunkedStaffOutput(groups,tuning,g=>{const a=bestAssignment(g.notes,tuning,minFret,maxFret,null,null,targetFret);if($('includeUnplayable').checked&&a.assigned<g.notes.length&&a.chosen.size===0)a.chosen.set(tuning[0].lowIndex,'x');return a.chosen;},
     (a,b)=>`${targetFret?`FRET-${targetFret} CANDIDATE`:'LOW-FRET CANDIDATE'} — events ${a+1}-${b}\nOne possible location per pitch; not optimized for performance.`);
 }
+
 function parseStarts(){const starts=$('positionStarts').value.split(',').map(x=>Number(x.trim())).filter(Number.isFinite).map(x=>Math.max(0,Math.round(x)));return[...new Set(starts)].sort((a,b)=>a-b);}
+
 function positionPassesOutput(groups,tuning,minFret,maxFret){
   const starts=parseStarts();if(!starts.length)throw new Error('Enter at least one fret-position start, such as 0, 5, 9, 12.');
   const width=clamp(Number($('positionWidth').value)||5,1,12),sections=[],openNote=$('openInAllBands').checked?', plus open strings':'';
@@ -560,12 +653,14 @@ function positionPassesOutput(groups,tuning,minFret,maxFret){
   }
   return sections.join('\n');
 }
+
 function uniqueOutput(groups,tuning,minFret,maxFret){
   const notes=[...new Set(groups.flatMap(g=>g.notes))].sort((a,b)=>a-b),lines=['UNIQUE-NOTE FRETBOARD INDEX'];
   for(const n of notes){const pos=positionsFor(n,tuning,minFret,maxFret);if(!pos.length&&!$('includeUnplayable').checked)continue;
     lines.push(`${noteName(n).padEnd(5)} ${pos.length?pos.slice().reverse().map(p=>`${noteName(p.note)}:${p.fret}`).join('   '):'OUT OF RANGE'}`);
   }return lines.join('\n')+'\n';
 }
+
 function buildNoteMatrix(){
   const container=$('noteMatrix');container.innerHTML='';excludedNotes.clear();
   if(!midiData){container.className='help';container.textContent='Load a MIDI file to populate.';return;}
@@ -590,6 +685,7 @@ function buildNoteMatrix(){
     }
   }
 }
+
 function updateFilterRanges(){
   if(!midiData)return;
   buildNoteMatrix();
@@ -606,6 +702,7 @@ function updateFilterRanges(){
   }else{baseNoteLow=0;baseNoteHigh=127;}
   syncNoteRange();
 }
+
 function syncNoteRange(){
   const t=readTranspose(),lo=baseNoteLow+t,hi=baseNoteHigh+t;
   $('noteLow').value=lo;$('noteHigh').value=hi;
@@ -736,8 +833,8 @@ function prDraw(){
   }
   if(prSelStart!=null){
     const x1=prXForTick(prSelStart),x2=prXForTick(prSelEnd);
-    prCtx.fillStyle='rgba(120,169,255,.13)';prCtx.fillRect(x1,PR_RULER,x2-x1,h-PR_RULER);
-    prCtx.strokeStyle='#78a9ff';prCtx.lineWidth=1;
+    prCtx.fillStyle='rgba(232,192,73,.14)';prCtx.fillRect(x1,PR_RULER,x2-x1,h-PR_RULER);
+    prCtx.strokeStyle='#E8C049';prCtx.lineWidth=1;
     prCtx.beginPath();prCtx.moveTo(Math.round(x1)+.5,PR_RULER);prCtx.lineTo(Math.round(x1)+.5,h);
     prCtx.moveTo(Math.round(x2)+.5,PR_RULER);prCtx.lineTo(Math.round(x2)+.5,h);prCtx.stroke();
   }
@@ -745,7 +842,7 @@ function prDraw(){
     const x=prXForTick(n.tick),bw=Math.max(2,n.dur*prPxPerTick()-1),y=prYForNote(n.note);
     if(x+bw<PR_GUTTER||x>w||y+prRowH<PR_RULER||y>h)continue;
     const inSel=prSelStart==null||(n.tick>=prSelStart&&n.tick<prSelEnd);
-    prCtx.fillStyle=n.included?(inSel?'#78a9ff':'#3a4a66'):'#2c333f';
+    prCtx.fillStyle=n.included?(inSel?'#E8C049':'#7a6420'):'#2c333f';
     prCtx.fillRect(Math.round(x),Math.round(y)+1,Math.round(bw),Math.max(2,prRowH-2));
   }
   prCtx.restore();
@@ -773,7 +870,7 @@ function prDraw(){
   }
   const px=prXForTick(prPlayhead);
   if(px>=PR_GUTTER&&px<=w){
-    prCtx.strokeStyle='#ff9292';prCtx.lineWidth=1.5;
+    prCtx.strokeStyle='#FF3300';prCtx.lineWidth=1.5;
     prCtx.beginPath();prCtx.moveTo(px,0);prCtx.lineTo(px,h);prCtx.stroke();
   }
 }
@@ -886,7 +983,7 @@ $('preset').addEventListener('change',e=>{if(PRESETS[e.target.value])setTuning(P
 $('stringCount').addEventListener('change',()=>{$('preset').value='custom';renderTuning();regenerateNow();});
 $('fileInput').addEventListener('change',e=>loadFile(e.target.files[0]));
 $('generate').addEventListener('click',generate);$('trackSelect').addEventListener('change',()=>{updateFilterRanges();generate();});$('outputMode').addEventListener('change',generate);
-['spelling','collapseRepeats','includeUnplayable','includePercussion','openInAllBands','preferString'].forEach(id=>$(id).addEventListener('change',regenerateNow));
+['spelling','collapseRepeats','includeUnplayable','includePercussion','openInAllBands','preferString','flowMode','flowGrid'].forEach(id=>$(id).addEventListener('change',regenerateNow));
 $('includePercussion').addEventListener('change',()=>updateFilterRanges());
 ['transpose','minFret','maxFret','targetFret','eventsPerStaff','maxEvents','groupTolerance','positionStarts','positionWidth','eventStart','eventEnd','noteLow','noteHigh'].forEach(id=>$(id).addEventListener('input',scheduleRegenerate));
 $('transpose').addEventListener('input',syncNoteRange);
